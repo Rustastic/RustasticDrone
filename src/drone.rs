@@ -89,7 +89,6 @@ impl Drone for RustasticDrone {
         }
     }
 
-<<<<<<< HEAD
 /// Runs the main loop of the drone, continuously processing commands and packets.
 ///
 /// This function enters an infinite loop, constantly monitoring two channels:
@@ -104,23 +103,6 @@ impl Drone for RustasticDrone {
 /// - If a `DroneCommand::Crash` is received, the loop terminates and a warning message is logged.
 /// - Other commands are passed to the `handle_command` function for further processing.
 /// - Received packets are passed to the `handle_packet` function for handling.
-=======
-    /// Creates a new `RustasticDrone` instance.
-    ///
-    /// # Arguments
-    /// - `id`: The unique identifier of the drone.
-    /// - `controller_send`: The channel used to send events back to the controller.
-    /// - `controller_recv`: The channel used to receive commands from the controller.
-    /// - `packet_recv`: The channel used to receive incoming packets from other drones.
-    /// - `packet_send`: A map of packet-sending channels to neighboring drones, keyed by their IDs.
-    /// - `pdr`: The Packet Drop Rate of the drone, affecting packet transmission reliability.
-    ///
-    /// The `packet_send` and `flood_id_received` fields are initialized to an empty HashMap
-    /// and an empty HashSet, respectively. The `buffer` is initialized with a size of 16.
-    ///
-    /// # Returns
-    /// A new instance of `RustasticDrone`.
->>>>>>> 166a94e6d160913ea8f823042591240f77102d53
     fn run(&mut self) {
         loop {
             select_biased! {
@@ -154,11 +136,7 @@ impl RustasticDrone {
     /// can be forwarded to the correct next hop. If any errors are found, appropriate `Nack` packets are sent.
     ///
     /// # Packet Handling Logic
-<<<<<<< HEAD
     /// - **`FloodRequest`**: If the packet is a flood request, it handles the request by calling `handle_flood_request`, 
-=======
-    /// - **FloodRequest**: If the packet is a flood request, it handles the request by calling `handle_flood_request`,
->>>>>>> 166a94e6d160913ea8f823042591240f77102d53
     ///   and then adds the flood ID to the `flood_id_received` set to prevent duplicate processing of the same flood.
     /// - **Correct Packet ID**: If the packet has the correct ID and is routable, it continues with routing and hop management.
     /// - **Destination Check**: If the destination of the packet is not a valid destination (e.g., a drone instead of a client/server),
@@ -260,11 +238,6 @@ impl RustasticDrone {
     /// - `true`: if the packet was successfully sent to the destination drone.
     /// - `false`: if there was an error in sending the packet, either due to an unreachable destination or a failure in the
     ///           communication channel.
-<<<<<<< HEAD
-    ///
-=======
-    ///   1
->>>>>>> 166a94e6d160913ea8f823042591240f77102d53
     /// # Behavior
     /// - The method extracts the next hop in the routing path (`destination`), checks if the destination is available in
     ///   `packet_send`, and attempts to send the packet to that destination.
