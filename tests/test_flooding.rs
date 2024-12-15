@@ -12,8 +12,7 @@ use wg_2024::{
     packet::{FloodRequest, FloodResponse, NodeType, Packet, PacketType},
 };
 
-use drone::RustasticDrone;
-use simulation_controller::SimulationController;
+use rustastic_drone::RustasticDrone;
 
 struct Host {
     id: NodeId,
@@ -429,8 +428,8 @@ fn test_flooding() {
         .send(DroneCommand::SetPacketDropRate(0.0))
         .unwrap();
     thread::sleep(Duration::from_secs(5));
-    let mut controller = SimulationController::new(controller_drones, node_event_recv);
-    controller.crash_all();
+    /*let mut controller = SimulationController::new(controller_drones, node_event_recv);
+    controller.crash_all();*/
 
     while let Some(handle) = handles.pop() {
         handle.join().unwrap();

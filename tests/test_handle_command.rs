@@ -1,4 +1,4 @@
-use drone::RustasticDrone;
+use rustastic_drone::RustasticDrone;
 
 use crossbeam_channel::unbounded;
 use std::{collections::HashMap, thread, time::Duration};
