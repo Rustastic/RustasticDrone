@@ -64,8 +64,8 @@ impl Drone for RustasticDrone {
     /// - `packet_send`: A map of packet-sending channels to other drones, keyed by their IDs.
     /// - `pdr`: The Packet Drop Rate of the drone, which affects transmission reliability.
     ///
-    /// The field `packet_send` and `flood_id_received` are respectively initialized to an empty
-    /// Hashmap and an empty Vector
+    /// The field `flood_id_received` is initialized to an empty`HashSet`
+    /// The field buffer is initialized with a `PacketBuffer` with default size of 16 packet
     ///
     /// # Returns
     /// A new instance of `RustasticDrone`.
@@ -89,21 +89,20 @@ impl Drone for RustasticDrone {
         }
     }
 
-    /// Creates a new `RustasticDrone` instance.
-    ///
-    /// # Arguments
-    /// - `id`: The unique identifier of the drone.
-    /// - `controller_send`: The channel used to send events back to the controller.
-    /// - `controller_recv`: The channel used to receive commands from the controller.
-    /// - `packet_recv`: The channel used to receive incoming packets from other drones.
-    /// - `packet_send`: A map of packet-sending channels to neighboring drones, keyed by their IDs.
-    /// - `pdr`: The Packet Drop Rate of the drone, affecting packet transmission reliability.
-    ///
-    /// The `packet_send` and `flood_id_received` fields are initialized to an empty HashMap 
-    /// and an empty HashSet, respectively. The `buffer` is initialized with a size of 16.
-    ///
-    /// # Returns
-    /// A new instance of `RustasticDrone`.
+/// Runs the main loop of the drone, continuously processing commands and packets.
+///
+/// This function enters an infinite loop, constantly monitoring two channels:
+/// - `self.controller_recv`: Receives commands from the drone controller.
+/// - `self.packet_recv`: Receives raw data packets.
+///
+/// The loop uses `select_biased!` to efficiently handle incoming data from both channels.
+/// 
+/// Command from simulation controller are prioritized over data packets
+/// 
+/// **Behavior:**
+/// - If a `DroneCommand::Crash` is received, the loop terminates and a warning message is logged.
+/// - Other commands are passed to the `handle_command` function for further processing.
+/// - Received packets are passed to the `handle_packet` function for handling.
     fn run(&mut self) {
         loop {
             select_biased! {
@@ -137,7 +136,7 @@ impl RustasticDrone {
     /// can be forwarded to the correct next hop. If any errors are found, appropriate `Nack` packets are sent.
     ///
     /// # Packet Handling Logic
-    /// - **FloodRequest**: If the packet is a flood request, it handles the request by calling `handle_flood_request`, 
+    /// - **`FloodRequest`**: If the packet is a flood request, it handles the request by calling `handle_flood_request`, 
     ///   and then adds the flood ID to the `flood_id_received` set to prevent duplicate processing of the same flood.
     /// - **Correct Packet ID**: If the packet has the correct ID and is routable, it continues with routing and hop management.
     /// - **Destination Check**: If the destination of the packet is not a valid destination (e.g., a drone instead of a client/server), 
@@ -239,7 +238,7 @@ impl RustasticDrone {
     /// - `true`: if the packet was successfully sent to the destination drone.
     /// - `false`: if there was an error in sending the packet, either due to an unreachable destination or a failure in the 
     ///           communication channel.
-    ///1
+    ///
     /// # Behavior
     /// - The method extracts the next hop in the routing path (`destination`), checks if the destination is available in 
     ///   `packet_send`, and attempts to send the packet to that destination.
@@ -538,7 +537,7 @@ impl RustasticDrone {
     /// of the failure.
     ///
     /// # Arguments
-    /// - `packet`: The `Packet` that needs to be acknowledged (or NACKed). This packet is either a regular packet or a fragment of a larger message.
+    /// - `packet`: The `Packet` that needs to be acknowledged (or nacked). This packet is either a regular packet or a fragment of a larger message.
     /// - `fragment`: An optional `Fragment` object that contains specific fragment data, if the NACK is related to a dropped fragment.
     /// - `nack_type`: The `NackType` representing the type of error or problem that occurred. This can be a dropped packet, an unexpected recipient, etc.
     ///
@@ -703,7 +702,7 @@ impl RustasticDrone {
         val <= (self.pdr * 100f32) as i32
     }
 
-    /// Handles an incoming FloodRequest packet and processes it accordingly.
+    /// Handles an incoming `FloodRequest` packet and processes it accordingly.
     ///
     /// This function handles the logic for processing a `FloodRequest` packet that has been received by the drone.
     /// It checks if the flood request has already been received, processes the path trace, and either forwards
@@ -967,7 +966,7 @@ impl RustasticDrone {
             session_id,
         };
 
-        match dest_node.1.send(new_packet.clone()) {
+        match dest_node.1.send(new_packet) {
             Ok(()) => info!(
                 "{} [ Drone {} ]: sent the FloodRequest with flood_id: {} sent to [ Drone {} ]",
                 "✓".green(),
@@ -1097,11 +1096,14 @@ impl RustasticDrone {
     ///     not meant to be processed here.
     ///
     /// # Behavior:
-    /// - **AddSender**: Adds the sender to the drone's list of connected drones if not already connected.
-    /// - **SetPacketDropRate**: Sets the drone’s packet drop rate (PDR), ensuring the value is between `0.0` and `1.0`.
-    /// - **RemoveSender**: Removes the sender from the drone's list of connected drones if it exists.
-    /// - **Crash**: This command is considered unreachable in the current context and will not be processed.
+    /// - **`AddSender`**: Adds the sender to the drone's list of connected drones if not already connected.
+    /// - **`SetPacketDropRate`**: Sets the drone’s packet drop rate (PDR), ensuring the value is between `0.0` and `1.0`.
+    /// - **`RemoveSender`**: Removes the sender from the drone's list of connected drones if it exists.
+    /// - **`Crash`**: This command is considered unreachable in the current context and will not be processed.
     ///
+    /// # Panic:
+    /// - Panic if a command of type `DroneCommand::Crash` is passed
+    /// 
     /// # Example:
     /// ```rust
     /// drone.handle_command(DroneCommand::AddSender(node_id, sender));
