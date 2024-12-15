@@ -8,9 +8,9 @@
 
 use colored::Colorize;
 use crossbeam_channel::{select_biased, Receiver, Sender};
+use log::{error, info, warn};
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
-use log::{info, warn, error};
 
 use wg_2024::{
     controller::{DroneCommand, DroneEvent},
@@ -25,10 +25,10 @@ use crate::packet_buffer;
 #[derive(Debug, Clone)]
 /// A Rustastic drone entity.
 ///
-/// The `RustasticDrone` struct represents a single drone with a unique ID, 
-/// communication channels for sending and receiving commands and packets, 
-/// and state for handling packet delivery and flood detection. It includes 
-/// functionality for packet routing, handling network events, and managing 
+/// The `RustasticDrone` struct represents a single drone with a unique ID,
+/// communication channels for sending and receiving commands and packets,
+/// and state for handling packet delivery and flood detection. It includes
+/// functionality for packet routing, handling network events, and managing
 /// the drone's internal packet buffer.
 ///
 /// # Fields
@@ -36,10 +36,10 @@ use crate::packet_buffer;
 /// - `controller_send`: A channel for sending events to the controller.
 /// - `controller_recv`: A channel for receiving commands from the controller.
 /// - `packet_recv`: A channel for receiving incoming packets from other drones.
-/// - `pdr`: The Packet Drop Rate (PDR), a float representing the probability 
-///   that a packet will be dropped during transmission. 
+/// - `pdr`: The Packet Drop Rate (PDR), a float representing the probability
+///   that a packet will be dropped during transmission.
 /// - `packet_send`: A map that associates neighboring drone IDs to their packet-sending channels.
-/// - `flood_id_received`: A set that caches flood IDs already processed, used to prevent 
+/// - `flood_id_received`: A set that caches flood IDs already processed, used to prevent
 ///   duplicate packet processing in the context of flood-based protocols.
 /// - `buffer`: A packet buffer to temporarily store packets that pass through the drone.
 pub struct RustasticDrone {
@@ -49,8 +49,8 @@ pub struct RustasticDrone {
     packet_recv: Receiver<Packet>,
     pdr: f32,
     packet_send: HashMap<NodeId, Sender<Packet>>,
-    flood_id_received: HashSet<(u64, NodeId)>, // Caching received flood_id  
-    pub buffer: packet_buffer::PacketBuffer, // Packet buffer
+    flood_id_received: HashSet<(u64, NodeId)>, // Caching received flood_id
+    pub buffer: packet_buffer::PacketBuffer,   // Packet buffer
 }
 
 impl Drone for RustasticDrone {
@@ -99,7 +99,7 @@ impl Drone for RustasticDrone {
     /// - `packet_send`: A map of packet-sending channels to neighboring drones, keyed by their IDs.
     /// - `pdr`: The Packet Drop Rate of the drone, affecting packet transmission reliability.
     ///
-    /// The `packet_send` and `flood_id_received` fields are initialized to an empty HashMap 
+    /// The `packet_send` and `flood_id_received` fields are initialized to an empty HashMap
     /// and an empty HashSet, respectively. The `buffer` is initialized with a size of 16.
     ///
     /// # Returns
@@ -131,18 +131,18 @@ impl Drone for RustasticDrone {
 impl RustasticDrone {
     /// Handles incoming packets for the drone.
     ///
-    /// This method is responsible for processing incoming packets. It checks the type of packet received and 
-    /// handles it accordingly. The packet could be a flood request, a normal message fragment, or an acknowledgment 
-    /// (either `Nack` or `Ack`). The method performs several checks to ensure that the packet is valid and 
+    /// This method is responsible for processing incoming packets. It checks the type of packet received and
+    /// handles it accordingly. The packet could be a flood request, a normal message fragment, or an acknowledgment
+    /// (either `Nack` or `Ack`). The method performs several checks to ensure that the packet is valid and
     /// can be forwarded to the correct next hop. If any errors are found, appropriate `Nack` packets are sent.
     ///
     /// # Packet Handling Logic
-    /// - **FloodRequest**: If the packet is a flood request, it handles the request by calling `handle_flood_request`, 
+    /// - **FloodRequest**: If the packet is a flood request, it handles the request by calling `handle_flood_request`,
     ///   and then adds the flood ID to the `flood_id_received` set to prevent duplicate processing of the same flood.
     /// - **Correct Packet ID**: If the packet has the correct ID and is routable, it continues with routing and hop management.
-    /// - **Destination Check**: If the destination of the packet is not a valid destination (e.g., a drone instead of a client/server), 
+    /// - **Destination Check**: If the destination of the packet is not a valid destination (e.g., a drone instead of a client/server),
     ///   it sends a `Nack` with an error message (`DestinationIsDrone`).
-    /// - **Neighbor Check**: If the packet cannot be forwarded to a neighbor (i.e., the next hop is not in the drone's neighbor list), 
+    /// - **Neighbor Check**: If the packet cannot be forwarded to a neighbor (i.e., the next hop is not in the drone's neighbor list),
     ///   it sends a `Nack` indicating an error in routing.
     /// - **Packet Type Handling**: Depending on the packet type, the method delegates the handling to the appropriate sub-methods:
     ///   - `Nack` and `Ack` packets are processed by `handle_ack_nack`.
@@ -154,7 +154,7 @@ impl RustasticDrone {
     ///
     /// # Behavior
     /// - The method first checks if the packet is a flood request, and handles it accordingly.
-    /// - If the packet is a normal message, it checks the validity of the destination and the neighbors, then forwards it or 
+    /// - If the packet is a normal message, it checks the validity of the destination and the neighbors, then forwards it or
     ///   sends a `Nack` if needed.
     ///
     /// # Example
@@ -226,9 +226,9 @@ impl RustasticDrone {
 
     /// Sends a message packet to the destination drone, or forwards it to the simulation controller if an error occurs.
     ///
-    /// This method is responsible for sending a `Packet` to the next drone in the routing path. It checks if the drone has a 
-    /// valid connection (through its `packet_send` map) to the destination. If the packet is successfully sent, it logs the 
-    /// event and returns `true`. If the destination is unreachable or an error occurs during sending, it logs the error 
+    /// This method is responsible for sending a `Packet` to the next drone in the routing path. It checks if the drone has a
+    /// valid connection (through its `packet_send` map) to the destination. If the packet is successfully sent, it logs the
+    /// event and returns `true`. If the destination is unreachable or an error occurs during sending, it logs the error
     /// and forwards the packet to the simulation controller, returning `false` to indicate failure.
     ///
     /// # Arguments
@@ -237,14 +237,14 @@ impl RustasticDrone {
     /// # Return Value
     /// Returns a `bool`:
     /// - `true`: if the packet was successfully sent to the destination drone.
-    /// - `false`: if there was an error in sending the packet, either due to an unreachable destination or a failure in the 
+    /// - `false`: if there was an error in sending the packet, either due to an unreachable destination or a failure in the
     ///           communication channel.
     ///1
     /// # Behavior
-    /// - The method extracts the next hop in the routing path (`destination`), checks if the destination is available in 
+    /// - The method extracts the next hop in the routing path (`destination`), checks if the destination is available in
     ///   `packet_send`, and attempts to send the packet to that destination.
-    /// - If the destination is unreachable, it checks if the packet is a `MsgFragment`. If so, it logs the failure without 
-    ///   attempting to send to the simulation controller. For other packet types, it forwards the packet to the simulation 
+    /// - If the destination is unreachable, it checks if the packet is a `MsgFragment`. If so, it logs the failure without
+    ///   attempting to send to the simulation controller. For other packet types, it forwards the packet to the simulation
     ///   controller with a `PacketDropped` event.
     ///
     /// # Example
@@ -276,14 +276,15 @@ impl RustasticDrone {
                 }
                 Err(e) => {
                     // In case of an error, forward the packet to the simulation controller
-                    error!("{} [ Drone {} ]: Failed to send the {} to [ Drone {} ]: {}",
+                    error!(
+                        "{} [ Drone {} ]: Failed to send the {} to [ Drone {} ]: {}",
                         "✗".red(),
                         self.id,
                         packet_type,
                         destination,
                         e
                     );
-                    
+
                     warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
 
                     self.controller_send
@@ -337,9 +338,9 @@ impl RustasticDrone {
 
     /// Checks if the drone's ID matches the expected recipient ID in the packet's routing header.
     ///
-    /// This method compares the current drone's ID with the ID specified in the packet's routing header at the 
-    /// current hop index. If the IDs match, the method returns `true`, indicating that the packet is addressed to 
-    /// this drone. If the IDs do not match, the method returns `false`, sends a NACK to the previous drone indicating 
+    /// This method compares the current drone's ID with the ID specified in the packet's routing header at the
+    /// current hop index. If the IDs match, the method returns `true`, indicating that the packet is addressed to
+    /// this drone. If the IDs do not match, the method returns `false`, sends a NACK to the previous drone indicating
     /// an unexpected recipient, and logs an error.
     ///
     /// # Arguments
@@ -351,10 +352,10 @@ impl RustasticDrone {
     /// - `false`: if the current drone's ID does not match the recipient ID, indicating an incorrect recipient.
     ///
     /// # Behavior
-    /// - The method compares the drone's ID (`self.id`) with the destination ID in the packet's routing header, 
+    /// - The method compares the drone's ID (`self.id`) with the destination ID in the packet's routing header,
     ///   at the position indicated by `hop_index`.
     /// - If the IDs match, the method returns `true`, confirming the packet is intended for this drone.
-    /// - If the IDs do not match, it sends a NACK with the error type `UnexpectedRecipient`, logs the mismatch error, 
+    /// - If the IDs do not match, it sends a NACK with the error type `UnexpectedRecipient`, logs the mismatch error,
     ///   and returns `false`.
     ///
     /// # Example
@@ -422,7 +423,8 @@ impl RustasticDrone {
                     packet.pack_type,
                 );
 
-                warn!("\n├─>{} Checking [ Drone {} ] buffer...", 
+                warn!(
+                    "\n├─>{} Checking [ Drone {} ] buffer...",
                     "!!!".yellow(),
                     self.id
                 );
@@ -590,7 +592,8 @@ impl RustasticDrone {
                 }
                 Err(e) => {
                     // Handle failure to send the NACK, send to the simulation controller instead
-                    warn!("{} [ Drone {} ]: Failed to send the Nack to [ Drone {} ]: {}",
+                    warn!(
+                        "{} [ Drone {} ]: Failed to send the Nack to [ Drone {} ]: {}",
                         "✗".red(),
                         self.id,
                         prev_hop,
@@ -612,7 +615,8 @@ impl RustasticDrone {
             }
         } else {
             // If no connection to the previous hop, send the NACK to the simulation controller
-            error!("{} [ Drone {} ]: Failed to send the Nack: No connection to {}",
+            error!(
+                "{} [ Drone {} ]: Failed to send the Nack: No connection to {}",
                 "✗".red(),
                 self.id,
                 prev_hop
@@ -886,9 +890,8 @@ impl RustasticDrone {
                         e
                     );
 
-                warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
+                    warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
 
-                    
                     self.controller_send
                         .send(DroneEvent::PacketDropped(new_packet))
                         .unwrap();
@@ -931,7 +934,7 @@ impl RustasticDrone {
     /// is routed according to the provided `routing_header` and `session_id`.
     ///
     /// # Arguments
-    /// - `dest_node`: A tuple containing the destination drone's ID (`NodeId`) and the corresponding sender 
+    /// - `dest_node`: A tuple containing the destination drone's ID (`NodeId`) and the corresponding sender
     ///   (`Sender<Packet>`) to send the packet to.
     /// - `flood_request`: The `FloodRequest` that is being sent, containing the flood ID, initiator ID, and the
     ///   path trace up to this point in the flood.
