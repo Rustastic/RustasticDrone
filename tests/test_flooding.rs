@@ -366,7 +366,7 @@ fn test_flooding() {
     }
 
     let mut controller_drones = HashMap::new();
-    let (node_event_send, node_event_recv) = unbounded();
+    let (node_event_send, _node_event_recv) = unbounded();
 
     let mut handles = Vec::new();
 
