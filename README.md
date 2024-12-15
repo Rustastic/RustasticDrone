@@ -84,4 +84,9 @@ Add the following to your `Cargo.toml`
 rustastic-drone = { git = "https://github.com/Rustastic/RustasticDrone.git" }
 ```
 
+To use in your code:
+``` rust
+use rustastic_drone::RustasticDrone;
+```
+
 # Assistance
