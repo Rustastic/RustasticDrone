@@ -34,7 +34,7 @@ and performance under all conditions. We are also careful to cover, in our tests
 
 ## Debugging
 An important feature of the Rustastic Drone that was implement to make the user experience as **user-friendly** as possible, is the debug. Our code is packed with debug statements to provide clear and detailed information about exactly what happened and in what order.
-We also decided to **color these debug logs**: errors and actions are highlighted in different colors, making them easy to spot in the terminal. You won’t need to comb through every line in the CLI to understand what went wrong. We also use the `log` ([link](https://docs.rs/log/latest/log/)) so that if the user plans to implement a logger the experience is going to be seamless 
+We also decided to **color these debug logs**: errors and actions are highlighted in different colors, making them easy to spot in the terminal. You won’t need to comb through every line in the CLI to understand what went wrong. We also use the `log` crate ([link](https://docs.rs/log/latest/log/)) so that if the user plans to implement a logger the experience is going to be seamless 
 
 
 To summarize the `Rustastic Drone` is **Simply Fantastic** because it stands out with its reliability, precision, and smart design.
