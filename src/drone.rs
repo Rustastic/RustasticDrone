@@ -172,7 +172,7 @@ impl RustasticDrone {
         if let PacketType::FloodRequest(flood_request) = packet.clone().pack_type {
             let flood_id = flood_request.flood_id;
             let flood_initiator = flood_request.initiator_id;
-            self.handle_flood_request(flood_request, packet);
+            self.handle_flood_request(flood_request, &packet);
             self.flood_id_received.insert((flood_id, flood_initiator));
         } else if self.check_packet_correct_id(packet.clone()) {
             // Increase hop_index
@@ -190,7 +190,7 @@ impl RustasticDrone {
             }
 
             // Check if the next hop is a valid neighbor
-            if !self.check_neighbor(packet.clone()) {
+            if !self.check_neighbor(&packet) {
                 //Step4
                 let neighbor = packet.routing_header.hops[packet.routing_header.hop_index];
                 error!(
@@ -199,7 +199,7 @@ impl RustasticDrone {
                     self.id,
                     neighbor
                 );
-                self.send_nack(packet.clone(), None, NackType::ErrorInRouting(self.id));
+                self.send_nack(packet, None, NackType::ErrorInRouting(self.id));
                 return;
             }
 
@@ -217,7 +217,7 @@ impl RustasticDrone {
                 PacketType::MsgFragment(fragment) => self.handle_fragment(packet, fragment),
                 PacketType::FloodRequest(_) => unreachable!(),
                 PacketType::FloodResponse(flood_response) => {
-                    self.handle_flood_response(flood_response, packet);
+                    self.handle_flood_response(&flood_response, &packet);
                 }
             }
         }
@@ -262,7 +262,7 @@ impl RustasticDrone {
         // Try sending to the destination drone
         if let Some(sender) = self.packet_send.get(&destination) {
             match sender.send(packet.clone()) {
-                Ok(_) => {
+                Ok(()) => {
                     info!(
                         "{} [ Drone {} ]: was sent a {} packet to [ Drone {} ]",
                         "✓".green(),
@@ -410,65 +410,62 @@ impl RustasticDrone {
     fn handle_ack_nack(&mut self, mut packet: Packet) {
         if packet.routing_header.hop_index >= packet.routing_header.hops.len() {
             // It can't happen
-            panic!("{} Source is not a client!", "PANIC".purple());
+            unreachable!("{} Source is not a client!", "PANIC".purple());
         }
-        match packet.clone().pack_type {
-            PacketType::Nack(nack) => {
-                warn!(
-                    "{} [ Drone {} ]: received a {}",
-                    "!!!".yellow(),
+        if let PacketType::Nack(nack) = packet.clone().pack_type {
+            warn!(
+                "{} [ Drone {} ]: received a {}",
+                "!!!".yellow(),
+                self.id,
+                packet.pack_type,
+            );
+
+            warn!(
+                "\n├─>{} Checking [ Drone {} ] buffer...",
+                "!!!".yellow(),
+                self.id
+            );
+
+            // Check if the fragment is in the buffer
+            if let Some(fragment) = self
+                .buffer
+                .get_fragment(packet.clone().session_id, nack.fragment_index)
+            {
+                info!(
+                    "├─>{} Fragment [ fragment_index: {} ] of the Packet [ session_id: {} ]  was found in the buffer",
+                    "✓".green(),
+                    fragment.fragment_index,
+                    packet.session_id
+                );
+
+                // Resend the fragment, reverse the path
+                packet.routing_header.reverse();
+                let new_packet = Packet {
+                    pack_type: PacketType::MsgFragment(fragment.clone()),
+                    routing_header: packet.routing_header.clone(),
+                    session_id: packet.session_id,
+                };
+                self.send_message(new_packet);
+
+                info!("└─>{} The Packet was sent", "✓".green());
+            } else {
+                // Send a nack to the previous node
+                packet.routing_header.hop_index += 1; // Move to the previous hop
+                self.send_nack(packet, None, NackType::Dropped);
+            }
+        } else {
+            if packet.routing_header.hop_index < packet.routing_header.hops.len() - 1 {
+                packet.routing_header.hop_index += 1; // Move to the next hop
+            } else {
+                error!(
+                    "{} Invalid hop index increment detected in [ Drone: {} ] for header of Packet [ session_id: {} ]",
+                    "✗".red(),
                     self.id,
-                    packet.pack_type,
+                    packet.session_id
                 );
-
-                warn!(
-                    "\n├─>{} Checking [ Drone {} ] buffer...",
-                    "!!!".yellow(),
-                    self.id
-                );
-
-                // Check if the fragment is in the buffer
-                if let Some(fragment) = self
-                    .buffer
-                    .get_fragment(packet.clone().session_id, nack.fragment_index)
-                {
-                    info!(
-                        "├─>{} Fragment [ fragment_index: {} ] of the Packet [ session_id: {} ]  was found in the buffer",
-                        "✓".green(),
-                        fragment.fragment_index,
-                        packet.session_id
-                    );
-
-                    // Resend the fragment, reverse the path
-                    packet.routing_header.reverse();
-                    let new_packet = Packet {
-                        pack_type: PacketType::MsgFragment(fragment.clone()),
-                        routing_header: packet.routing_header.clone(),
-                        session_id: packet.session_id,
-                    };
-                    self.send_message(new_packet);
-
-                    info!("└─>{} The Packet was sent", "✓".green());
-                } else {
-                    // Send a nack to the previous node
-                    packet.routing_header.hop_index += 1; // Move to the previous hop
-                    self.send_nack(packet, None, NackType::Dropped);
-                }
+                return;
             }
-            _ => {
-                if packet.routing_header.hop_index < packet.routing_header.hops.len() - 1 {
-                    packet.routing_header.hop_index += 1; // Move to the next hop
-                } else {
-                    error!(
-                        "{} Invalid hop index increment detected in [ Drone: {} ] for header of Packet [ session_id: {} ]",
-                        "✗".red(),
-                        self.id,
-                        packet.session_id
-                    );
-                    return;
-                }
-                self.send_message(packet);
-            }
+            self.send_message(packet);
         }
     }
 
@@ -580,7 +577,7 @@ impl RustasticDrone {
 
             // Send the NACK to the previous hop
             match sender.send(packet.clone()) {
-                Ok(_) => {
+                Ok(()) => {
                     warn!(
                         "{} Nack was sent from [ Drone {} ] to [ Drone {} ]",
                         "!!!".yellow(),
@@ -674,12 +671,11 @@ impl RustasticDrone {
     ///     println!("The destination is not a neighbor.");
     /// }
     /// ```
-    fn check_neighbor(&self, packet: Packet) -> bool {
+    fn check_neighbor(&self, packet: &Packet) -> bool {
         let destination = packet.routing_header.hops[packet.routing_header.hop_index];
         self.packet_send.contains_key(&destination)
     }
 
-    #[allow(clippy::cast_possible_truncation)]
     // Determines if a packet fragment should be dropped based on the Packet Drop Rate (PDR).
     ///
     /// This function simulates the packet drop behavior based on the current drone's Packet Drop Rate (PDR).
@@ -701,8 +697,8 @@ impl RustasticDrone {
     /// ```
     fn check_drop_fragment(&self) -> bool {
         let mut rng = rand::thread_rng();
-        let val = rng.gen_range(1..=100);
-        val <= (self.pdr * 100f32) as i32
+        let val = rng.gen_range(1f32..=100f32);
+        val <= self.pdr * 100f32
     }
 
     /// Handles an incoming `FloodRequest` packet and processes it accordingly.
@@ -731,7 +727,7 @@ impl RustasticDrone {
     /// ```rust
     /// drone.handle_flood_request(flood_request, packet);
     /// ```
-    fn handle_flood_request(&self, mut flood_request: FloodRequest, packet: Packet) {
+    fn handle_flood_request(&self, mut flood_request: FloodRequest, packet: &Packet) {
         // Determine the previous node that sent the packet
         let prev_node = if let Some(node) = flood_request.path_trace.last() {
             node.0
@@ -856,7 +852,7 @@ impl RustasticDrone {
     /// ```rust
     /// drone.handle_flood_response(flood_response, packet);
     /// ```
-    fn handle_flood_response(&self, flood_response: FloodResponse, packet: Packet) {
+    fn handle_flood_response(&self, flood_response: &FloodResponse, packet: &Packet) {
         let new_routing_header = packet.routing_header.clone();
 
         // Prepare a new packet to send the flood response back
@@ -1151,14 +1147,7 @@ impl RustasticDrone {
                 }
             }
             DroneCommand::RemoveSender(node_id) => {
-                if !self.packet_send.contains_key(&node_id) {
-                    warn!(
-                        "{} [ Drone {} ] is already disconnected from [ Drone {} ]",
-                        "!!!".yellow(),
-                        self.id,
-                        node_id
-                    );
-                } else {
+                if self.packet_send.contains_key(&node_id) {
                     info!(
                         "{} Removing sender: {} from [ Drone {} ]",
                         "✓".green(),
@@ -1166,6 +1155,13 @@ impl RustasticDrone {
                         self.id
                     );
                     self.packet_send.remove(&node_id);
+                } else {
+                    warn!(
+                        "{} [ Drone {} ] is already disconnected from [ Drone {} ]",
+                        "!!!".yellow(),
+                        self.id,
+                        node_id
+                    );
                 }
             }
             DroneCommand::Crash => unreachable!(),
