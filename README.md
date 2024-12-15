@@ -92,3 +92,5 @@ use rustastic_drone::RustasticDrone;
 ```
 
 # Assistance
+
+You can contact us through our telegram bot if you need more infos: https://t.me/rustastic_support_bot
