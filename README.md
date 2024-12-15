@@ -30,13 +30,13 @@ The Rustastic Drone aims for **protocol perfection**: every aspect of the protoc
 ## Testing
 The Rustastic Drone undergoes **extensive testing** to ensure robustness and performance under all conditions. Every feature and function is rigorously evaluated, covering both common and rare edge cases. Our comprehensive suite of tests leaves no room for unexpected behavior, and we are continually expanding our test coverage to guarantee reliability.
 
-## Debugging
-To enhance user experience, Rustastic Drone includes a powerful **debugging system**:
+## Logging
+To enhance user experience, Rustastic Drone includes a powerful **logging system**:
 - Debug logs provide clear, detailed information about events and their sequence.
 - Errors and actions are highlighted in distinct colors, making logs easy to read in the terminal.
-- Integrated with the `log` crate ([documentation](https://docs.rs/log/latest/log/)) for seamless compatibility with custom loggers.
+- Integrated with the `log` crate ([documentation](https://docs.rs/log/latest/log/)) for seamless compatibility with loggers such as `log4rs` or `env_logger`.
 
-These features make debugging intuitive and efficient, reducing the time needed to diagnose and resolve issues.
+These features make logging intuitive and efficient, reducing the time needed to diagnose and resolve issues.
 
 In summary, the `Rustastic Drone` is **Simply Fantastic** because it stands out for its reliability, precision, and smart design.
 
