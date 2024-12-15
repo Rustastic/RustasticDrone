@@ -1,3 +1,11 @@
+//! This file contains the Rustastic Drone implementation, developed by the Group Rustastic.
+//!
+//! File:   drone/drone.rs
+//!
+//! Brief:  Main file for the Rustastic Drone, containing the core drone logic.
+//!
+//! Author: Rustastic (Andrea Carzeri, Alessandro Busola, Andrea Denina, Giulio Bosio)
+
 use colored::Colorize;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::Rng;
@@ -14,6 +22,25 @@ use crate::packet_buffer;
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone)]
+/// A Rustastic drone entity.
+///
+/// The `RustasticDrone` struct represents a single drone with a unique ID, 
+/// communication channels for sending and receiving commands and packets, 
+/// and state for handling packet delivery and flood detection. It includes 
+/// functionality for packet routing, handling network events, and managing 
+/// the drone's internal packet buffer.
+///
+/// # Fields
+/// - `id`: The unique identifier of the drone.
+/// - `controller_send`: A channel for sending events to the controller.
+/// - `controller_recv`: A channel for receiving commands from the controller.
+/// - `packet_recv`: A channel for receiving incoming packets from other drones.
+/// - `pdr`: The Packet Drop Rate (PDR), a float representing the probability 
+///   that a packet will be dropped during transmission. 
+/// - `packet_send`: A map that associates neighboring drone IDs to their packet-sending channels.
+/// - `flood_id_received`: A set that caches flood IDs already processed, used to prevent 
+///   duplicate packet processing in the context of flood-based protocols.
+/// - `buffer`: A packet buffer to temporarily store packets that pass through the drone.
 pub struct RustasticDrone {
     id: NodeId,
     controller_send: Sender<DroneEvent>,
@@ -21,12 +48,26 @@ pub struct RustasticDrone {
     packet_recv: Receiver<Packet>,
     pdr: f32,
     packet_send: HashMap<NodeId, Sender<Packet>>,
-    //caching the flood_id s already received
-    flood_id_received: HashSet<(u64, NodeId)>,
-    pub buffer: packet_buffer::PacketBuffer,
+    flood_id_received: HashSet<(u64, NodeId)>, // Caching received flood_id  
+    pub buffer: packet_buffer::PacketBuffer, // Packet buffer
 }
 
 impl Drone for RustasticDrone {
+    /// Creates a new `RustasticDrone`.
+    ///
+    /// # Arguments
+    /// - `id`: The unique identifier of the drone.
+    /// - `controller_send`: The channel to send events to the controller.
+    /// - `controller_recv`: The channel to receive commands from the controller.
+    /// - `packet_recv`: The channel to receive packets from other drones.
+    /// - `packet_send`: A map of packet-sending channels to other drones, keyed by their IDs.
+    /// - `pdr`: The Packet Drop Rate of the drone, which affects transmission reliability.
+    ///
+    /// The field `packet_send` and `flood_id_received` are respectively initialized to an empty
+    /// Hashmap and an empty Vector
+    ///
+    /// # Returns
+    /// A new instance of `RustasticDrone`.
     fn new(
         id: NodeId,
         controller_send: Sender<DroneEvent>,
@@ -47,6 +88,21 @@ impl Drone for RustasticDrone {
         }
     }
 
+    /// Creates a new `RustasticDrone` instance.
+    ///
+    /// # Arguments
+    /// - `id`: The unique identifier of the drone.
+    /// - `controller_send`: The channel used to send events back to the controller.
+    /// - `controller_recv`: The channel used to receive commands from the controller.
+    /// - `packet_recv`: The channel used to receive incoming packets from other drones.
+    /// - `packet_send`: A map of packet-sending channels to neighboring drones, keyed by their IDs.
+    /// - `pdr`: The Packet Drop Rate of the drone, affecting packet transmission reliability.
+    ///
+    /// The `packet_send` and `flood_id_received` fields are initialized to an empty HashMap 
+    /// and an empty HashSet, respectively. The `buffer` is initialized with a size of 16.
+    ///
+    /// # Returns
+    /// A new instance of `RustasticDrone`.
     fn run(&mut self) {
         loop {
             select_biased! {
@@ -70,11 +126,42 @@ impl Drone for RustasticDrone {
         }
     }
 }
-//spostare la logica di routing al drone
+
 impl RustasticDrone {
-    #[allow(clippy::too_many_lines)]
+    /// Handles incoming packets for the drone.
+    ///
+    /// This method is responsible for processing incoming packets. It checks the type of packet received and 
+    /// handles it accordingly. The packet could be a flood request, a normal message fragment, or an acknowledgment 
+    /// (either `Nack` or `Ack`). The method performs several checks to ensure that the packet is valid and 
+    /// can be forwarded to the correct next hop. If any errors are found, appropriate `Nack` packets are sent.
+    ///
+    /// # Packet Handling Logic
+    /// - **FloodRequest**: If the packet is a flood request, it handles the request by calling `handle_flood_request`, 
+    ///   and then adds the flood ID to the `flood_id_received` set to prevent duplicate processing of the same flood.
+    /// - **Correct Packet ID**: If the packet has the correct ID and is routable, it continues with routing and hop management.
+    /// - **Destination Check**: If the destination of the packet is not a valid destination (e.g., a drone instead of a client/server), 
+    ///   it sends a `Nack` with an error message (`DestinationIsDrone`).
+    /// - **Neighbor Check**: If the packet cannot be forwarded to a neighbor (i.e., the next hop is not in the drone's neighbor list), 
+    ///   it sends a `Nack` indicating an error in routing.
+    /// - **Packet Type Handling**: Depending on the packet type, the method delegates the handling to the appropriate sub-methods:
+    ///   - `Nack` and `Ack` packets are processed by `handle_ack_nack`.
+    ///   - Fragmented messages are processed by `handle_fragment`.
+    ///   - Flood responses are handled by `handle_flood_response`.
+    ///
+    /// # Arguments
+    /// - `packet`: The incoming `Packet` that needs to be processed.
+    ///
+    /// # Behavior
+    /// - The method first checks if the packet is a flood request, and handles it accordingly.
+    /// - If the packet is a normal message, it checks the validity of the destination and the neighbors, then forwards it or 
+    ///   sends a `Nack` if needed.
+    ///
+    /// # Example
+    /// ```rust
+    /// // Assuming `packet` is a received packet to handle
+    /// drone.handle_packet(packet);
+    /// ```
     fn handle_packet(&mut self, mut packet: Packet) {
-        //TODO debug only
         println!(
             "{} [ Drone {} ]: has received the packet {:?}",
             "✓".green(),
@@ -82,18 +169,17 @@ impl RustasticDrone {
             packet
         );
 
-        //Step1
-        //Step2
-
         if let PacketType::FloodRequest(flood_request) = packet.clone().pack_type {
             let flood_id = flood_request.flood_id;
             let flood_initiator = flood_request.initiator_id;
             self.handle_flood_request(flood_request, packet);
             self.flood_id_received.insert((flood_id, flood_initiator));
         } else if self.check_packet_correct_id(packet.clone()) {
+            // Increase hop_index
             packet.routing_header.increase_hop_index();
+
+            // If the destination has been reached, and it is a Drone (invalid destination)
             if packet.routing_header.hop_index == packet.routing_header.hops.len() {
-                //Step3
                 eprintln!(
                     "{} The selected destination in the RoutingHeader of [ Drone {} ] is a Drone",
                     "✗".red(),
@@ -103,6 +189,7 @@ impl RustasticDrone {
                 return;
             }
 
+            // Check if the next hop is a valid neighbor
             if !self.check_neighbor(packet.clone()) {
                 //Step4
                 let neighbor = packet.routing_header.hops[packet.routing_header.hop_index];
@@ -123,6 +210,7 @@ impl RustasticDrone {
                 self.id
             );
 
+            // Handle packet types: Nack, Ack, MsgFragment, FloodResponse
             match packet.clone().pack_type {
                 PacketType::Nack(_nack) => self.handle_ack_nack(packet),
                 PacketType::Ack(_ack) => self.handle_ack_nack(packet),
@@ -135,12 +223,45 @@ impl RustasticDrone {
         }
     }
 
-    //packet needs to be updated to the correct hop index
+    /// Sends a message packet to the destination drone, or forwards it to the simulation controller if an error occurs.
+    ///
+    /// This method is responsible for sending a `Packet` to the next drone in the routing path. It checks if the drone has a 
+    /// valid connection (through its `packet_send` map) to the destination. If the packet is successfully sent, it logs the 
+    /// event and returns `true`. If the destination is unreachable or an error occurs during sending, it logs the error 
+    /// and forwards the packet to the simulation controller, returning `false` to indicate failure.
+    ///
+    /// # Arguments
+    /// - `packet`: The `Packet` to be sent. It contains the routing information and the packet type.
+    ///
+    /// # Return Value
+    /// Returns a `bool`:
+    /// - `true`: if the packet was successfully sent to the destination drone.
+    /// - `false`: if there was an error in sending the packet, either due to an unreachable destination or a failure in the 
+    ///           communication channel.
+    ///1
+    /// # Behavior
+    /// - The method extracts the next hop in the routing path (`destination`), checks if the destination is available in 
+    ///   `packet_send`, and attempts to send the packet to that destination.
+    /// - If the destination is unreachable, it checks if the packet is a `MsgFragment`. If so, it logs the failure without 
+    ///   attempting to send to the simulation controller. For other packet types, it forwards the packet to the simulation 
+    ///   controller with a `PacketDropped` event.
+    ///
+    /// # Example
+    /// ```rust
+    /// let packet = Packet { /* packet data */ };
+    /// let sent = drone.send_message(packet);
+    /// if sent {
+    ///     println!("Message sent successfully!");
+    /// } else {
+    ///     println!("Failed to send the message.");
+    /// }
+    /// ```
     fn send_message(&self, packet: Packet) -> bool {
         let destination = packet.routing_header.hops[packet.routing_header.hop_index];
         let packet_type = packet.pack_type.clone();
+
+        // Try sending to the destination drone
         if let Some(sender) = self.packet_send.get(&destination) {
-            //create a nack and I send it to the previous node
             match sender.send(packet.clone()) {
                 Ok(_) => {
                     println!(
@@ -153,6 +274,7 @@ impl RustasticDrone {
                     true
                 }
                 Err(e) => {
+                    // In case of an error, forward the packet to the simulation controller
                     println!("{} [ Drone {} ]: Failed to send the {} to [ Drone {} ]: {}\n├─>{} Sending to Simulation Controller...",
                         "✗".red(),
                         self.id,
@@ -161,7 +283,6 @@ impl RustasticDrone {
                         e,
                         "!!!".yellow()
                     );
-                    //there is an error in sending the packet, the drone should send the packet to the simulation controller
                     self.controller_send
                         .send(DroneEvent::PacketDropped(packet))
                         .unwrap();
@@ -176,6 +297,7 @@ impl RustasticDrone {
                 }
             }
         } else {
+            // Handle case where there is no connection to the destination drone
             if let PacketType::MsgFragment(_) = packet_type {
                 println!(
                     "{} [ Drone {} ]: does not exist in the path",
@@ -206,6 +328,38 @@ impl RustasticDrone {
         }
     }
 
+    /// Checks if the drone's ID matches the expected recipient ID in the packet's routing header.
+    ///
+    /// This method compares the current drone's ID with the ID specified in the packet's routing header at the 
+    /// current hop index. If the IDs match, the method returns `true`, indicating that the packet is addressed to 
+    /// this drone. If the IDs do not match, the method returns `false`, sends a NACK to the previous drone indicating 
+    /// an unexpected recipient, and logs an error.
+    ///
+    /// # Arguments
+    /// - `packet`: The `Packet` that contains the routing header, which includes a list of hops and the current hop index.
+    ///
+    /// # Return Value
+    /// Returns a `bool`:
+    /// - `true`: if the current drone's ID matches the recipient ID in the packet's routing header.
+    /// - `false`: if the current drone's ID does not match the recipient ID, indicating an incorrect recipient.
+    ///
+    /// # Behavior
+    /// - The method compares the drone's ID (`self.id`) with the destination ID in the packet's routing header, 
+    ///   at the position indicated by `hop_index`.
+    /// - If the IDs match, the method returns `true`, confirming the packet is intended for this drone.
+    /// - If the IDs do not match, it sends a NACK with the error type `UnexpectedRecipient`, logs the mismatch error, 
+    ///   and returns `false`.
+    ///
+    /// # Example
+    /// ```rust
+    /// let packet = Packet { /* packet data */ };
+    /// let is_correct = drone.check_packet_correct_id(packet);
+    /// if is_correct {
+    ///     println!("Packet addressed correctly to the drone.");
+    /// } else {
+    ///     println!("Packet addressed to the wrong drone.");
+    /// }
+    /// ```
     fn check_packet_correct_id(&self, packet: Packet) -> bool {
         if self.id == packet.clone().routing_header.hops[packet.clone().routing_header.hop_index] {
             true
@@ -220,9 +374,36 @@ impl RustasticDrone {
         }
     }
 
+    /// Handles the reception of ACK and NACK packets, managing fragment retransmissions and routing updates.
+    ///
+    /// This method processes incoming NACK or ACK packets, depending on the packet type. If a NACK is received, it attempts
+    /// to find the corresponding fragment in the drone's buffer and resends it. If the fragment is not found, a NACK is sent
+    /// back to the previous hop. For ACK packets, the method ensures the correct routing and either forwards the packet or
+    /// updates the routing header accordingly.
+    ///
+    /// # Arguments
+    /// - `packet`: The `Packet` that contains the routing header and packet type (NACK, ACK, etc.) to be processed.
+    ///
+    /// # Behavior
+    /// - **If the packet type is a NACK**:
+    ///   - It checks the drone's buffer for the requested fragment using the `session_id` and `fragment_index`.
+    ///   - If the fragment is found, it is resent by reversing the routing path and creating a new packet with the fragment.
+    ///   - If the fragment is not found, a NACK is sent to the previous node, indicating that the fragment could not be found.
+    /// - **If the packet type is an ACK**:
+    ///   - It increments the hop index and forwards the packet to the next hop, if the index is valid.
+    ///   - If the hop index is at the end of the route, it logs an error.
+    ///
+    /// # Panic
+    /// - If the hop index is greater than or equal to the number of hops, it causes a panic with the message "Source is not a client!".
+    ///
+    /// # Example
+    /// ```rust
+    /// let packet = Packet { /* packet data */ };
+    /// drone.handle_ack_nack(packet);
+    /// ```
     fn handle_ack_nack(&mut self, mut packet: Packet) {
         if packet.routing_header.hop_index >= packet.routing_header.hops.len() {
-            //it can't happen
+            // It can't happen
             panic!("{} Source is not a client!", "PANIC".purple());
         }
         match packet.clone().pack_type {
@@ -236,7 +417,7 @@ impl RustasticDrone {
                     self.id
                 );
 
-                //check if it is in the buffer
+                // Check if the fragment is in the buffer
                 if let Some(fragment) = self
                     .buffer
                     .get_fragment(packet.clone().session_id, nack.fragment_index)
@@ -248,8 +429,7 @@ impl RustasticDrone {
                         packet.session_id
                     );
 
-                    //re_send the fragment
-                    //reverse the path
+                    // Resend the fragment, reverse the path
                     packet.routing_header.reverse();
                     let new_packet = Packet {
                         pack_type: PacketType::MsgFragment(fragment.clone()),
@@ -260,14 +440,14 @@ impl RustasticDrone {
 
                     println!("└─>{} The Packet was sent", "✓".green());
                 } else {
-                    //send nack to the previous node
-                    packet.routing_header.hop_index += 1; //to the previous
+                    // Send a nack to the previous node
+                    packet.routing_header.hop_index += 1; // Move to the previous hop
                     self.send_nack(packet, None, NackType::Dropped);
                 }
             }
             _ => {
                 if packet.routing_header.hop_index < packet.routing_header.hops.len() - 1 {
-                    packet.routing_header.hop_index += 1; //to the previous
+                    packet.routing_header.hop_index += 1; // Move to the next hop
                 } else {
                     println!(
                         "{} Invalid hop index increment detected in [ Drone: {} ] for header of Packet [ session_id: {} ]",
@@ -282,6 +462,32 @@ impl RustasticDrone {
         }
     }
 
+    /// Handles the reception of a fragmented packet, either dropping it based on the Packet Drop Rate (PDR)
+    /// or forwarding and storing it in the drone's buffer.
+    ///
+    /// This method processes a packet fragment by either dropping it, based on the drone's PDR, or forwarding it
+    /// to the next hop. If the fragment is not dropped, it is added to the drone's buffer to be potentially retransmitted
+    /// later. If the fragment is dropped, a NACK is sent to notify the sender of the packet drop.
+    ///
+    /// # Arguments
+    /// - `packet`: The `Packet` containing the routing header and session ID, which the fragment belongs to.
+    /// - `fragment`: The `Fragment` that is part of the `packet` and contains the fragmented data.
+    ///
+    /// # Behavior
+    /// - **If the fragment is dropped** (based on the `check_drop_fragment` method):
+    ///   - A message is printed to indicate that the fragment was dropped by the drone.
+    ///   - A NACK is sent to the previous node, indicating that the fragment was dropped.
+    /// - **If the fragment is not dropped**:
+    ///   - The fragment is added to the drone's buffer using its `session_id` and the fragment's `fragment_index`.
+    ///   - A message is printed to indicate that the fragment was successfully added to the buffer.
+    ///   - The `packet` is forwarded to the next hop by calling `send_message`.
+    ///
+    /// # Example
+    /// ```rust
+    /// let packet = Packet { /* packet data */ };
+    /// let fragment = Fragment { /* fragment data */ };
+    /// drone.handle_fragment(packet, fragment);
+    /// ```
     fn handle_fragment(&mut self, packet: Packet, fragment: Fragment) {
         if self.check_drop_fragment() {
             println!(
@@ -293,7 +499,7 @@ impl RustasticDrone {
             );
             self.send_nack(packet, Some(fragment), NackType::Dropped);
         } else {
-            //add the fragment to the buffer
+            // Add the fragment to the buffer
             println!(
                 "{} [ Drone {} ]: forwarded the the fragment [ fragment_index: {} ] of the Packet [ session_id: {} ]",
                 "✓".green(),
@@ -314,24 +520,55 @@ impl RustasticDrone {
         }
     }
 
-    //Useful to send nack to the previous node
+    /// Sends a NACK (Negative Acknowledgment) to the previous hop or to the simulation controller in case of an error.
+    ///
+    /// This function sends a NACK message back to the previous drone in the routing path when there is a problem with
+    /// the packet or its fragment, such as a routing error or dropped packet. If the NACK cannot be sent to the
+    /// previous drone due to an issue (e.g., no connection), the NACK is sent to the simulation controller to notify
+    /// of the failure.
+    ///
+    /// # Arguments
+    /// - `packet`: The `Packet` that needs to be acknowledged (or NACKed). This packet is either a regular packet or a fragment of a larger message.
+    /// - `fragment`: An optional `Fragment` object that contains specific fragment data, if the NACK is related to a dropped fragment.
+    /// - `nack_type`: The `NackType` representing the type of error or problem that occurred. This can be a dropped packet, an unexpected recipient, etc.
+    ///
+    /// # Behavior
+    /// - The function reverses the routing header to determine the previous hop in the routing path and attempts to send the NACK to that drone.
+    /// - If the NACK is related to a fragment (i.e., the `fragment` argument is `Some`), the function updates the NACK's fragment index and type accordingly.
+    /// - If the NACK is successfully sent to the previous drone, a message is logged to indicate the successful transmission.
+    /// - If the drone cannot send the NACK to the previous hop (e.g., no connection), it sends the NACK to the simulation controller and logs the event.
+    ///
+    /// # Example
+    /// ```rust
+    /// let packet = Packet { /* packet data */ };
+    /// let fragment = Some(Fragment { /* fragment data */ });
+    /// let nack_type = NackType::Dropped;
+    /// drone.send_nack(packet, fragment, nack_type);
+    /// ```
     fn send_nack(&self, mut packet: Packet, fragment: Option<Fragment>, nack_type: NackType) {
+        // Reverse the routing header to get the previous hop
         packet.routing_header.reverse();
         let prev_hop = packet.routing_header.next_hop().unwrap();
+
+        // Attempt to send the NACK to the previous hop
         if let Some(sender) = self.packet_send.get(&prev_hop) {
             let mut nack = Nack {
-                fragment_index: 0, //if it isn't a fragment then i put the nack_type and index
+                fragment_index: 0, // Default fragment index for non-fragmented NACKs
                 nack_type,
             };
+
+            // If it's a fragment, set the fragment index and NACK type accordingly
             if let Some(frag) = fragment {
-                //if it is a fragment then i set it
                 nack = Nack {
                     fragment_index: frag.fragment_index,
                     nack_type: NackType::Dropped,
                 };
             }
+
+            // Update the packet type to NACK
             packet.pack_type = PacketType::Nack(nack);
 
+            // Send the NACK to the previous hop
             match sender.send(packet.clone()) {
                 Ok(_) => {
                     println!(
@@ -342,6 +579,7 @@ impl RustasticDrone {
                     );
                 }
                 Err(e) => {
+                    // Handle failure to send the NACK, send to the simulation controller instead
                     println!("{} [ Drone {} ]: Failed to send the Nack to [ Drone {} ]: {}\n├─>{} Sending to Simulation Controller...",
                         "✗".red(),
                         self.id,
@@ -361,7 +599,7 @@ impl RustasticDrone {
                 }
             }
         } else {
-            //panic!("Drone before this {} does not exist", prev_hop);
+            // If no connection to the previous hop, send the NACK to the simulation controller
             println!("{} [ Drone {} ]: Failed to send the Nack: No connection to {}\n├─>{} Sending to Simulation Controller...",
                 "✗".red(),
                 self.id,
@@ -369,12 +607,13 @@ impl RustasticDrone {
                 "!!!".yellow()
             );
 
+            // Create the NACK (same logic as above)
             let mut nack = Nack {
-                fragment_index: 0, //if it isn't a fragment then i put the nack_type and index
+                fragment_index: 0,
                 nack_type,
             };
+
             if let Some(frag) = fragment {
-                //if it is a fragment then i set it
                 nack = Nack {
                     fragment_index: frag.fragment_index,
                     nack_type: NackType::Dropped,
@@ -382,6 +621,7 @@ impl RustasticDrone {
             }
             packet.pack_type = PacketType::Nack(nack);
 
+            // Send to the simulation controller
             self.controller_send
                 .send(DroneEvent::PacketDropped(packet))
                 .unwrap();
@@ -393,20 +633,91 @@ impl RustasticDrone {
         }
     }
 
+    /// Checks if the destination of a packet is a neighboring drone.
+    ///
+    /// This function checks whether the destination drone, as indicated in the packet's routing header,
+    /// is a valid neighbor of the current drone. It does so by verifying if there is a connection to
+    /// the destination drone in the `packet_send` map, which holds the communication channels for sending
+    /// packets to neighboring drones.
+    ///
+    /// # Arguments
+    /// - `packet`: The `Packet` whose destination is being checked. The packet contains a routing header
+    ///   that specifies the destination drone and the current hop index.
+    ///
+    /// # Returns
+    /// - `true` if the destination of the packet is a valid neighbor of the current drone (i.e., there is
+    ///   a communication channel to the destination).
+    /// - `false` if the destination is not a neighbor (i.e., there is no communication channel to the destination).
+    ///
+    /// # Example
+    /// ```rust
+    /// let packet = Packet { /* packet data */ };
+    /// let is_neighbor = drone.check_neighbor(packet);
+    /// if is_neighbor {
+    ///     println!("The destination is a neighbor.");
+    /// } else {
+    ///     println!("The destination is not a neighbor.");
+    /// }
+    /// ```
     fn check_neighbor(&self, packet: Packet) -> bool {
         let destination = packet.routing_header.hops[packet.routing_header.hop_index];
         self.packet_send.contains_key(&destination)
     }
 
     #[allow(clippy::cast_possible_truncation)]
+    // Determines if a packet fragment should be dropped based on the Packet Drop Rate (PDR).
+    ///
+    /// This function simulates the packet drop behavior based on the current drone's Packet Drop Rate (PDR).
+    /// It generates a random number between 1 and 100 and compares it to the scaled PDR (multiplied by 100).
+    /// If the random value is less than or equal to the scaled PDR, the fragment is considered to be dropped.
+    ///
+    /// # Returns
+    /// - `true` if the packet fragment should be dropped based on the current PDR.
+    /// - `false` if the packet fragment should not be dropped.
+    ///
+    /// # Example
+    /// ```rust
+    /// let should_drop = drone.check_drop_fragment();
+    /// if should_drop {
+    ///     println!("The packet fragment will be dropped.");
+    /// } else {
+    ///     println!("The packet fragment will not be dropped.");
+    /// }
+    /// ```
     fn check_drop_fragment(&self) -> bool {
         let mut rng = rand::thread_rng();
         let val = rng.gen_range(1..=100);
         val <= (self.pdr * 100f32) as i32
     }
 
+    /// Handles an incoming FloodRequest packet and processes it accordingly.
+    ///
+    /// This function handles the logic for processing a `FloodRequest` packet that has been received by the drone.
+    /// It checks if the flood request has already been received, processes the path trace, and either forwards
+    /// the flood request to neighbors or responds with a `FloodResponse`. The flood request is a type of routing
+    /// protocol used to propagate information across the network of drones, and the drone can either forward or
+    /// respond based on its state.
+    ///
+    /// # Arguments
+    /// - `flood_request`: The `FloodRequest` packet containing information about the flood and its path trace.
+    /// - `packet`: The full packet that contains the flood request and additional metadata, such as the routing header.
+    ///
+    /// # Behavior:
+    /// - The function first determines the last node in the path trace to identify the drone that sent the request.
+    /// - It then checks if the flood request has already been received based on its `flood_id` and `initiator_id`.
+    /// - If the request has already been processed, the drone sends a `FloodResponse` back to the previous node
+    ///   indicating that the flood request has already been received.
+    /// - If the drone has no neighbors to forward the request to (except the previous node), it sends a `FloodResponse`
+    ///   to the previous node indicating that no further hops are available.
+    /// - If the drone has neighbors to forward the request to, it sends the `FloodRequest` to each neighbor except
+    ///   the one that sent the request (the `prev_node`).
+    ///
+    /// # Example:
+    /// ```rust
+    /// drone.handle_flood_request(flood_request, packet);
+    /// ```
     fn handle_flood_request(&self, mut flood_request: FloodRequest, packet: Packet) {
-        //neighbor that sent the packet
+        // Determine the previous node that sent the packet
         let prev_node = if let Some(node) = flood_request.path_trace.last() {
             node.0
         } else {
@@ -414,21 +725,15 @@ impl RustasticDrone {
             todo!("how to tell controller we received a wrong path-trace")
         };
 
-        //copied the path-trace in the flood_request and added the current node
-        // let mut new_path_trace = flood_request.path_trace.clone();
-        // new_path_trace.push((self.id, NodeType::Drone));
+        // Add the current drone to the path-trace
         flood_request.path_trace.push((self.id, NodeType::Drone));
 
-        //let mut new_routing_header = packet.routing_header.clone();
-        //new_routing_header.hop_index += 1;
-        //new_routing_header.hops.push(self.id);
-
-        //check if the flood_id has already been received
+        // Check if the flood request has already been processed
         if self
             .flood_id_received
             .contains(&(flood_request.flood_id, flood_request.initiator_id))
         {
-            //sending new floodResponse to prev_node or to sim controller
+            // If it has been processed, send a FloodResponse to the previous node
 
             let mut new_hops: Vec<u8> = flood_request
                 .clone()
@@ -444,6 +749,7 @@ impl RustasticDrone {
                 hops: new_hops,
             };
 
+            // Send the FloodResponse to the previous node
             self.send_flood_response(
                 prev_node,
                 &flood_request,
@@ -458,7 +764,7 @@ impl RustasticDrone {
                 .as_str(),
             );
         } else if self.packet_send.len() == 1 {
-            //we have not neighbor except the prev node
+            // If the drone has no neighbors except the previous node
             let mut new_hops: Vec<u8> = flood_request
                 .clone()
                 .path_trace
@@ -472,6 +778,8 @@ impl RustasticDrone {
                 hop_index: 1,
                 hops: new_hops,
             };
+
+            // Send a FloodResponse indicating no further neighbors to forward the request
             self.send_flood_response(
                 prev_node,
                 &flood_request,
@@ -486,7 +794,7 @@ impl RustasticDrone {
                     .as_str(),
             );
         } else {
-            //sending to every neighbors except previous one
+            // Forward the FloodRequest to all neighbors except the previous node
             for neighbor in self
                 .packet_send
                 .iter()
@@ -498,6 +806,7 @@ impl RustasticDrone {
                     packet.routing_header.clone(),
                     packet.session_id,
                 );
+
                 println!(
                     "{} [ Drone {} ]: sent a FloodRequest with flood_id: {} to the [ Drone {} ]",
                     "✓".green(),
@@ -509,6 +818,278 @@ impl RustasticDrone {
         }
     }
 
+    /// Handles the incoming `FloodResponse` packet, processes it, and sends it back to the appropriate drone.
+    ///
+    /// This function processes a received `FloodResponse` packet by forwarding it to the next hop in the path.
+    /// If the next hop is unavailable or if an error occurs while sending the response, the packet is sent to the
+    /// simulation controller instead. It plays a critical role in routing flood responses back through the network
+    /// of drones.
+    ///
+    /// # Arguments
+    /// - `flood_response`: The `FloodResponse` packet that was received. This packet contains the information
+    ///   about the flood response and its associated metadata.
+    /// - `packet`: The full packet, which contains additional information like the routing header and session ID.
+    ///
+    /// # Behavior:
+    /// - The function attempts to forward the `FloodResponse` to the next drone in the path specified by the
+    ///   `routing_header` in the `packet`.
+    /// - If the next hop is available in `packet_send`, the packet is forwarded to the next drone.
+    /// - If the next hop is not available, or if there is an error in sending the packet, the packet is sent to
+    ///   the simulation controller to handle the issue.
+    ///
+    /// # Example:
+    /// ```rust
+    /// drone.handle_flood_response(flood_response, packet);
+    /// ```
+    fn handle_flood_response(&self, flood_response: FloodResponse, packet: Packet) {
+        let new_routing_header = packet.routing_header.clone();
+
+        // Prepare a new packet to send the flood response back
+        let new_packet = Packet {
+            pack_type: PacketType::FloodResponse(flood_response.clone()),
+            routing_header: new_routing_header.clone(),
+            session_id: packet.session_id,
+        };
+
+        // Try to send the FloodResponse to the next hop in the routing path
+        if let Some(sender) = self
+            .packet_send
+            .get(&new_routing_header.hops[new_routing_header.hop_index])
+        {
+            match sender.send(new_packet.clone()) {
+                Ok(()) => println!(
+                    "{} [ Drone {} ]: sent a FloodResponse with flood_id: {} to [ Drone {} ]",
+                    "✓".green(),
+                    self.id,
+                    flood_response.flood_id,
+                    &new_routing_header.hops[new_routing_header.hop_index]
+                ),
+                Err(e) => {
+                    println!(
+                        "{} [ Drone {} ]: failed to send the FloodResponse to the Drone {}: {}\n├─>{} Sending to Simulation Controller...",
+                        "✗".red(),
+                        self.id,
+                        &new_routing_header.hops[new_routing_header.hop_index],
+                        e,
+                        "!!!".yellow()
+                    );
+                    
+                    self.controller_send
+                        .send(DroneEvent::PacketDropped(new_packet))
+                        .unwrap();
+
+                    println!(
+                        "└─>{} [ Drone {} ]: sent the FloodResponse to the Simulation Controller",
+                        "!!!".yellow(),
+                        self.id
+                    );
+                }
+            }
+        } else {
+            // If the next hop is unavailable, send the packet to the simulation controller
+            println!(
+                "{} [ Drone {} ]: failed to send the FloodResponse: No connection to [ Drone {} ]\n├─>{} Sending to Simulation Controller...",
+                "✗".red(),
+                self.id,
+                &new_routing_header.hops[new_routing_header.hop_index],
+                "!!!".yellow()
+            );
+
+            // Send the packet to the simulation controller
+            self.controller_send
+                .send(DroneEvent::PacketDropped(new_packet))
+                .unwrap();
+
+            println!(
+                "└─>{} [ Drone {} ]: sent the FloodResponse to the Simulation Controller",
+                "!!!".yellow(),
+                self.id
+            );
+        }
+    }
+
+    /// Sends a `FloodRequest` packet to a specified destination drone.
+    ///
+    /// This function creates a new `FloodRequest` packet and sends it to the specified destination drone.
+    /// The `FloodRequest` contains information about the flood ID, initiator ID, and path trace. The packet
+    /// is routed according to the provided `routing_header` and `session_id`.
+    ///
+    /// # Arguments
+    /// - `dest_node`: A tuple containing the destination drone's ID (`NodeId`) and the corresponding sender 
+    ///   (`Sender<Packet>`) to send the packet to.
+    /// - `flood_request`: The `FloodRequest` that is being sent, containing the flood ID, initiator ID, and the
+    ///   path trace up to this point in the flood.
+    /// - `routing_header`: The `SourceRoutingHeader` which provides routing information for this packet.
+    /// - `session_id`: A unique session ID that helps track the packet across the network.
+    ///
+    /// # Behavior:
+    /// - The function creates a new `FloodRequest` packet based on the provided `flood_request` and `routing_header`.
+    /// - It then attempts to send this packet to the specified destination drone using the provided sender (`Sender<Packet>`).
+    /// - If sending the packet is successful, a success message is logged. If there is an error, an error message is logged.
+    ///
+    /// # Example:
+    /// ```rust
+    /// drone.send_flood_request((&destination_id, &destination_sender), &flood_request, routing_header, session_id);
+    /// ```
+    fn send_flood_request(
+        &self,
+        dest_node: (&NodeId, &Sender<Packet>),
+        flood_request: &FloodRequest,
+        routing_header: SourceRoutingHeader,
+        session_id: u64,
+    ) {
+        let flood_id = flood_request.flood_id;
+        let new_flood_request = FloodRequest {
+            flood_id,
+            initiator_id: flood_request.initiator_id,
+            path_trace: flood_request.path_trace.clone(),
+        };
+
+        let new_packet = Packet {
+            pack_type: PacketType::FloodRequest(new_flood_request),
+            routing_header,
+            session_id,
+        };
+
+        match dest_node.1.send(new_packet.clone()) {
+            Ok(()) => println!(
+                "{} [ Drone {} ]: sent the FloodRequest with flood_id: {} sent to [ Drone {} ]",
+                "✓".green(),
+                self.id,
+                flood_id,
+                dest_node.0
+            ),
+            Err(e) => println!(
+                "{} [ Drone {} ]: failed to send FloodRequest to the [ Drone {} ]: {}",
+                "✗".red(),
+                self.id,
+                dest_node.0,
+                e
+            ),
+        };
+    }
+
+    /// Sends a `FloodResponse` packet to a specified destination drone.
+    ///
+    /// This function creates a `FloodResponse` packet and sends it to a destination drone. The response includes
+    /// the flood ID and the path trace that was followed during the flood request. The packet is routed according
+    /// to the provided `routing_header` and is identified by the provided `session_id`.
+    ///
+    /// # Arguments
+    /// - `dest_node`: The ID of the destination drone to send the response to.
+    /// - `flood_request`: The `FloodRequest` that prompted this response. It contains the `flood_id` and `path_trace`.
+    /// - `routing_header`: The `SourceRoutingHeader` containing routing information for the packet.
+    /// - `session_id`: A unique session ID used to track the packet across the network.
+    /// - `reason`: A description or reason for sending the response. This will be logged along with the action.
+    ///
+    /// # Behavior:
+    /// - The function creates a `FloodResponse` packet based on the `flood_request` and the `routing_header`.
+    /// - The response is then sent to the destination drone using the provided `dest_node`.
+    /// - If the packet is successfully sent, a success message is logged. If there is an error in sending the packet,
+    ///   the packet is sent to the simulation controller to indicate a failure.
+    ///
+    /// # Example:
+    /// ```rust
+    /// drone.send_flood_response(destination_id, &flood_request, routing_header, session_id, "FloodRequest already received");
+    /// ```
+    fn send_flood_response(
+        &self,
+        dest_node: NodeId,
+        flood_request: &FloodRequest,
+        routing_header: SourceRoutingHeader,
+        session_id: u64,
+        reason: &str,
+    ) {
+        let flood_response = FloodResponse {
+            flood_id: flood_request.flood_id,
+            path_trace: flood_request.path_trace.clone(),
+        };
+
+        let new_packet = Packet {
+            pack_type: PacketType::FloodResponse(flood_response.clone()),
+            routing_header,
+            session_id,
+        };
+
+        if let Some(sender) = self.packet_send.get(&dest_node) {
+            match sender.send(new_packet.clone()) {
+                Ok(()) => println!(
+                    "{} [ Drone {} ]: sent the FloodResponse to [ Drone {} ]\n└─>Reason: {}",
+                    "✓".green(),
+                    self.id,
+                    dest_node,
+                    reason
+                ),
+                Err(e) => {
+                    println!(
+                        "{} [ Drone {} ]: Failed to send the FloodResponse to [ Drone {} ]: {}\n├─>{} Sending to Simulation Controller...",
+                        "✗".red(),
+                        self.id,
+                        dest_node,
+                        e,
+                        "!!!".yellow()
+                    );
+
+                    self.controller_send
+                        .send(DroneEvent::PacketDropped(new_packet))
+                        .unwrap();
+
+                    println!(
+                        "└─>{} [ Drone {} ]: FloodResponse sent to Simulation Controller",
+                        "!!!".yellow(),
+                        self.id
+                    );
+                }
+            }
+        } else {
+            // Handle the case where there is no connection to the destination drone
+            println!(
+                "{} [ Drone {} ]: Failed to send the FloodResponse: No connection to [ Drone {} ]\n├─>{} Sending to Simulation Controller...",
+                "✗".red(),
+                self.id,
+                dest_node,
+                "!!!".yellow()
+            );
+
+            self.controller_send
+                .send(DroneEvent::PacketDropped(new_packet))
+                .unwrap();
+
+            println!(
+                "└─>{} [ Drone {} ]: FloodResponse sent to Simulation Controller",
+                "!!!".yellow(),
+                self.id
+            );
+        }
+    }
+
+    /// Handles incoming drone commands to manage network connections and settings.
+    ///
+    /// This function processes different types of commands for the drone, including adding or removing senders,
+    /// adjusting the packet drop rate (PDR), and handling a crash command. Based on the command type, the drone
+    /// either updates its network connections, modifies its settings, or triggers the respective behavior.
+    ///
+    /// # Arguments
+    /// - `command`: The drone command to handle, which can be one of the following:
+    ///   - `AddSender(node_id, sender)`: Adds a sender (a connection to another drone) to the drone's network.
+    ///   - `SetPacketDropRate(pdr)`: Sets the packet drop rate (PDR) of the drone, controlling the likelihood of
+    ///     dropping packets during transmission.
+    ///   - `RemoveSender(node_id)`: Removes a sender (a connection to another drone) from the drone's network.
+    ///   - `Crash`: This command simulates a crash of the drone, but it is marked as `unreachable` because it is
+    ///     not meant to be processed here.
+    ///
+    /// # Behavior:
+    /// - **AddSender**: Adds the sender to the drone's list of connected drones if not already connected.
+    /// - **SetPacketDropRate**: Sets the drone’s packet drop rate (PDR), ensuring the value is between `0.0` and `1.0`.
+    /// - **RemoveSender**: Removes the sender from the drone's list of connected drones if it exists.
+    /// - **Crash**: This command is considered unreachable in the current context and will not be processed.
+    ///
+    /// # Example:
+    /// ```rust
+    /// drone.handle_command(DroneCommand::AddSender(node_id, sender));
+    /// drone.handle_command(DroneCommand::SetPacketDropRate(0.1));
+    /// drone.handle_command(DroneCommand::RemoveSender(node_id));
+    /// ```
     fn handle_command(&mut self, command: DroneCommand) {
         match command {
             DroneCommand::AddSender(node_id, sender) => {
@@ -566,180 +1147,6 @@ impl RustasticDrone {
                 }
             }
             DroneCommand::Crash => unreachable!(),
-        }
-    }
-
-    fn handle_flood_response(&self, flood_response: FloodResponse, packet: Packet) {
-        let new_routing_header = packet.routing_header.clone();
-
-        //new_routing_header.hop_index -= 1;
-
-        let new_packet = Packet {
-            pack_type: PacketType::FloodResponse(flood_response.clone()),
-            routing_header: new_routing_header.clone(),
-            session_id: packet.session_id,
-        };
-
-        if let Some(sender) = self
-            .packet_send
-            .get(&new_routing_header.hops[new_routing_header.hop_index])
-        {
-            match sender.send(new_packet.clone()) {
-                Ok(()) => println!(
-                    "{} [ Drone {} ]: sent a FloodResponse with flood_id: {} to [ Drone {} ]",
-                    "✓".green(),
-                    self.id,
-                    flood_response.flood_id,
-                    &new_routing_header.hops[new_routing_header.hop_index]
-                ),
-                Err(e) => {
-                    println!(
-                        "{} [ Drone {} ]: failed to send the FloodResponse to the Drone {}: {}\n├─>{} Sending to Simulation Controller...",
-                        "✗".red(),
-                        self.id,
-                        &new_routing_header.hops[new_routing_header.hop_index],
-                        e,
-                        "!!!".yellow()
-                    );
-                    self.controller_send
-                        .send(DroneEvent::PacketDropped(new_packet))
-                        .unwrap();
-                    println!(
-                        "└─>{} [ Drone {} ]: sent the FloodResponse to the Simulation Controller",
-                        "!!!".yellow(),
-                        self.id
-                    );
-                }
-            }
-        } else {
-            println!(
-                "{} [ Drone {} ]: failed to send the FloodResponse: No connection to [ Drone {} ]\n├─>{} Sending to Simulation Controller...",
-                "✗".red(),
-                self.id,
-                &new_routing_header.hops[new_routing_header.hop_index],
-                "!!!".yellow()
-            );
-
-            // println!("[ Drone {} ]: {:?}", self.id, flood_response);
-
-            self.controller_send
-                .send(DroneEvent::PacketDropped(new_packet))
-                .unwrap();
-            println!(
-                "└─>{} [ Drone {} ]: sent the FloodResponse to the Simulation Controller",
-                "!!!".yellow(),
-                self.id
-            );
-        }
-    }
-
-    fn send_flood_request(
-        &self,
-        dest_node: (&NodeId, &Sender<Packet>),
-        flood_request: &FloodRequest,
-        routing_header: SourceRoutingHeader,
-        session_id: u64,
-    ) {
-        let flood_id = flood_request.flood_id;
-        let new_flood_request = FloodRequest {
-            flood_id,
-            initiator_id: flood_request.initiator_id,
-            path_trace: flood_request.path_trace.clone(),
-        };
-
-        let new_packet = Packet {
-            pack_type: PacketType::FloodRequest(new_flood_request),
-            routing_header,
-            session_id,
-        };
-
-        match dest_node.1.send(new_packet.clone()) {
-            Ok(()) => println!(
-                "{} [ Drone {} ]: sent the FloodRequest with flood_id: {} sent to [ Drone {} ]",
-                "✓".green(),
-                self.id,
-                flood_id,
-                dest_node.0
-            ),
-            Err(e) => println!(
-                "{} [ Drone {} ]: failed to send FloodRequest to the [ Drone {} ]: {}",
-                "✗".red(),
-                self.id,
-                dest_node.0,
-                e
-            ),
-        };
-    }
-
-    fn send_flood_response(
-        &self,
-        dest_node: NodeId,
-        flood_request: &FloodRequest,
-        routing_header: SourceRoutingHeader,
-        session_id: u64,
-        reason: &str,
-    ) {
-        let flood_response = FloodResponse {
-            flood_id: flood_request.flood_id,
-            path_trace: flood_request.path_trace.clone(),
-        };
-
-        //decreasing hop_index for default
-        //routing_header.hop_index -= 1;
-
-        let new_packet = Packet {
-            pack_type: PacketType::FloodResponse(flood_response.clone()),
-            routing_header,
-            session_id,
-        };
-
-        if let Some(sender) = self.packet_send.get(&dest_node) {
-            match sender.send(new_packet.clone()) {
-                Ok(()) => println!(
-                    "{} [ Drone {} ]: sent the FloodResponse to [ Drone {} ]\n└─>Reason: {}",
-                    "✓".green(),
-                    self.id,
-                    dest_node,
-                    reason
-                ),
-                Err(e) => {
-                    println!(
-                        "{} [ Drone {} ]: Failed to send the FloodResponse to [ Drone {} ]: {}\n├─>{} Sending to Simulation Controller...",
-                        "✗".red(),
-                        self.id,
-                        dest_node,
-                        e,
-                        "!!!".yellow()
-                    );
-                    //there is an error in sending the packet, the drone should send the packet to the simulation controller
-                    self.controller_send
-                        .send(DroneEvent::PacketDropped(new_packet))
-                        .unwrap();
-                    println!(
-                        "└─>{} [ Drone {} ]: FloodResponse sent to Simulation Controller",
-                        "!!!".yellow(),
-                        self.id
-                    );
-                }
-            }
-        } else {
-            //there is an error in sending the packet, the drone should send the packet to the simulation controller
-            println!(
-                "{} [ Drone {} ]: Failed to send the FloodResponse: No connection to [ Drone {} ]\n├─>{} Sending to Simulation Controller...",
-                "✗".red(),
-                self.id,
-                dest_node,
-                "!!!".yellow()
-            );
-
-            self.controller_send
-                .send(DroneEvent::PacketDropped(new_packet))
-                .unwrap();
-            println!(
-                "└─>{} [ Drone {} ]: FloodResponse sent to Simulation Controller",
-                "!!!".yellow(),
-                self.id
-            );
         }
     }
 }

@@ -1,3 +1,11 @@
+//! This file contains the Rustastic Drone's buffer implementation, developed by the Group Rustastic.
+//!
+//! File:   drone/buffer.rs
+//!
+//! Brief:  File for the Rustastic Drone's buffer, containing the core buffer logic.
+//!
+//! Author: Andrea Carzeri
+
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use wg_2024::packet::Fragment;
