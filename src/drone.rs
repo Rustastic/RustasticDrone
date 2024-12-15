@@ -239,7 +239,7 @@ impl RustasticDrone {
     /// - `true`: if the packet was successfully sent to the destination drone.
     /// - `false`: if there was an error in sending the packet, either due to an unreachable destination or a failure in the
     ///           communication channel.
-    ///1
+    ///   1
     /// # Behavior
     /// - The method extracts the next hop in the routing path (`destination`), checks if the destination is available in
     ///   `packet_send`, and attempts to send the packet to that destination.
