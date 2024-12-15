@@ -10,7 +10,7 @@ use wg_2024::{
     packet::{FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType},
 };
 
-mod packet_buffer;
+use crate::packet_buffer;
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone)]
