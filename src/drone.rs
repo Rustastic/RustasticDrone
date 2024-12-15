@@ -10,6 +10,7 @@ use colored::Colorize;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
+use log::{info, warn, error};
 
 use wg_2024::{
     controller::{DroneCommand, DroneEvent},
@@ -110,7 +111,7 @@ impl Drone for RustasticDrone {
                     if let Ok(command) = command {
                         match command {
                             DroneCommand::Crash => {
-                                println!("{} [ Drone {} ]: Has crashed", "!!!".yellow(), self.id);
+                                warn!("{} [ Drone {} ]: Has crashed", "!!!".yellow(), self.id);
                                 break;
                             },
                             _ => self.handle_command(command)
@@ -162,7 +163,7 @@ impl RustasticDrone {
     /// drone.handle_packet(packet);
     /// ```
     fn handle_packet(&mut self, mut packet: Packet) {
-        println!(
+        info!(
             "{} [ Drone {} ]: has received the packet {:?}",
             "✓".green(),
             self.id,
@@ -180,7 +181,7 @@ impl RustasticDrone {
 
             // If the destination has been reached, and it is a Drone (invalid destination)
             if packet.routing_header.hop_index == packet.routing_header.hops.len() {
-                eprintln!(
+                error!(
                     "{} The selected destination in the RoutingHeader of [ Drone {} ] is a Drone",
                     "✗".red(),
                     self.id
@@ -193,7 +194,7 @@ impl RustasticDrone {
             if !self.check_neighbor(packet.clone()) {
                 //Step4
                 let neighbor = packet.routing_header.hops[packet.routing_header.hop_index];
-                eprintln!(
+                error!(
                     "{} [ Drone {} ]: can't send packet to Drone {} because it is not its neighbor",
                     "✗".red(),
                     self.id,
@@ -203,7 +204,7 @@ impl RustasticDrone {
                 return;
             }
 
-            println!(
+            info!(
                 "{} Packet with [ session_id: {} ] is being handled from [ Drone {} ]",
                 "✓".green(),
                 packet.session_id,
@@ -264,7 +265,7 @@ impl RustasticDrone {
         if let Some(sender) = self.packet_send.get(&destination) {
             match sender.send(packet.clone()) {
                 Ok(_) => {
-                    println!(
+                    info!(
                         "{} [ Drone {} ]: was sent a {} packet to [ Drone {} ]",
                         "✓".green(),
                         self.id,
@@ -275,18 +276,21 @@ impl RustasticDrone {
                 }
                 Err(e) => {
                     // In case of an error, forward the packet to the simulation controller
-                    println!("{} [ Drone {} ]: Failed to send the {} to [ Drone {} ]: {}\n├─>{} Sending to Simulation Controller...",
+                    error!("{} [ Drone {} ]: Failed to send the {} to [ Drone {} ]: {}",
                         "✗".red(),
                         self.id,
                         packet_type,
                         destination,
-                        e,
-                        "!!!".yellow()
+                        e
                     );
+                    
+                    warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
+
                     self.controller_send
                         .send(DroneEvent::PacketDropped(packet))
                         .unwrap();
-                    println!(
+
+                    warn!(
                         "└─>{} [ Drone {} ]: {} sent to Simulation Controller",
                         "!!!".yellow(),
                         self.id,
@@ -299,24 +303,27 @@ impl RustasticDrone {
         } else {
             // Handle case where there is no connection to the destination drone
             if let PacketType::MsgFragment(_) = packet_type {
-                println!(
+                error!(
                     "{} [ Drone {} ]: does not exist in the path",
                     "✗".red(),
                     destination
                 );
             } else {
-                println!(
-                    "{} [ Drone {} ]: Failed to send the {}: No connection to [ Drone {} ]\n├─>{} Sending to Simulation Controller...",
+                error!(
+                    "{} [ Drone {} ]: Failed to send the {}: No connection to [ Drone {} ]",
                     "✗".red(),
                     self.id,
                     packet_type,
-                    destination,
-                    "!!!".yellow()
+                    destination
                 );
+
+                warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
+
                 self.controller_send
                     .send(DroneEvent::PacketDropped(packet))
                     .unwrap();
-                println!(
+
+                warn!(
                     "└─>{} [ Drone {} ]: {} sent to Simulation Controller",
                     "!!!".yellow(),
                     self.id,
@@ -365,7 +372,7 @@ impl RustasticDrone {
             true
         } else {
             self.send_nack(packet, None, NackType::UnexpectedRecipient(self.id));
-            println!(
+            error!(
                 "{} [ Drone {} ]: does not correspond to the Drone indicated by the `hop_index`",
                 "✗".red(),
                 self.id
@@ -408,11 +415,14 @@ impl RustasticDrone {
         }
         match packet.clone().pack_type {
             PacketType::Nack(nack) => {
-                println!(
-                    "{} [ Drone {} ]: received a {}\n├─>{} Checking [ Drone {} ] buffer...",
+                warn!(
+                    "{} [ Drone {} ]: received a {}",
                     "!!!".yellow(),
                     self.id,
                     packet.pack_type,
+                );
+
+                warn!("\n├─>{} Checking [ Drone {} ] buffer...", 
                     "!!!".yellow(),
                     self.id
                 );
@@ -422,7 +432,7 @@ impl RustasticDrone {
                     .buffer
                     .get_fragment(packet.clone().session_id, nack.fragment_index)
                 {
-                    println!(
+                    info!(
                         "├─>{} Fragment [ fragment_index: {} ] of the Packet [ session_id: {} ]  was found in the buffer",
                         "✓".green(),
                         fragment.fragment_index,
@@ -438,7 +448,7 @@ impl RustasticDrone {
                     };
                     self.send_message(new_packet);
 
-                    println!("└─>{} The Packet was sent", "✓".green());
+                    info!("└─>{} The Packet was sent", "✓".green());
                 } else {
                     // Send a nack to the previous node
                     packet.routing_header.hop_index += 1; // Move to the previous hop
@@ -449,7 +459,7 @@ impl RustasticDrone {
                 if packet.routing_header.hop_index < packet.routing_header.hops.len() - 1 {
                     packet.routing_header.hop_index += 1; // Move to the next hop
                 } else {
-                    println!(
+                    error!(
                         "{} Invalid hop index increment detected in [ Drone: {} ] for header of Packet [ session_id: {} ]",
                         "✗".red(),
                         self.id,
@@ -490,7 +500,7 @@ impl RustasticDrone {
     /// ```
     fn handle_fragment(&mut self, packet: Packet, fragment: Fragment) {
         if self.check_drop_fragment() {
-            println!(
+            warn!(
                 "{} Fragment [ fragment_index: {} ] of the Packet [ session_id: {} ] has been dropped by [ Drone {} ]",
                 "!!!".yellow(),
                 fragment.fragment_index,
@@ -500,7 +510,7 @@ impl RustasticDrone {
             self.send_nack(packet, Some(fragment), NackType::Dropped);
         } else {
             // Add the fragment to the buffer
-            println!(
+            info!(
                 "{} [ Drone {} ]: forwarded the the fragment [ fragment_index: {} ] of the Packet [ session_id: {} ]",
                 "✓".green(),
                 self.id,
@@ -512,7 +522,7 @@ impl RustasticDrone {
                 .add_fragment(packet.clone().session_id, fragment);
             self.send_message(packet);
 
-            println!(
+            warn!(
                 "└─>{} Fragment was added to the [ Drone {} ] buffer",
                 "!!!".yellow(),
                 self.id
@@ -571,7 +581,7 @@ impl RustasticDrone {
             // Send the NACK to the previous hop
             match sender.send(packet.clone()) {
                 Ok(_) => {
-                    println!(
+                    warn!(
                         "{} Nack was sent from [ Drone {} ] to [ Drone {} ]",
                         "!!!".yellow(),
                         self.id,
@@ -580,18 +590,20 @@ impl RustasticDrone {
                 }
                 Err(e) => {
                     // Handle failure to send the NACK, send to the simulation controller instead
-                    println!("{} [ Drone {} ]: Failed to send the Nack to [ Drone {} ]: {}\n├─>{} Sending to Simulation Controller...",
+                    warn!("{} [ Drone {} ]: Failed to send the Nack to [ Drone {} ]: {}",
                         "✗".red(),
                         self.id,
                         prev_hop,
-                        e,
-                        "!!!".yellow()
+                        e
                     );
+
+                    warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
+
                     //there is an error in sending the packet, the drone should send the packet to the simulation controller
                     self.controller_send
                         .send(DroneEvent::PacketDropped(packet))
                         .unwrap();
-                    println!(
+                    warn!(
                         "└─>{} [ Drone {} ]: sent A Nack to the Simulation Controller",
                         "!!!".yellow(),
                         self.id
@@ -600,12 +612,13 @@ impl RustasticDrone {
             }
         } else {
             // If no connection to the previous hop, send the NACK to the simulation controller
-            println!("{} [ Drone {} ]: Failed to send the Nack: No connection to {}\n├─>{} Sending to Simulation Controller...",
+            error!("{} [ Drone {} ]: Failed to send the Nack: No connection to {}",
                 "✗".red(),
                 self.id,
-                prev_hop,
-                "!!!".yellow()
+                prev_hop
             );
+
+            warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
 
             // Create the NACK (same logic as above)
             let mut nack = Nack {
@@ -625,7 +638,7 @@ impl RustasticDrone {
             self.controller_send
                 .send(DroneEvent::PacketDropped(packet))
                 .unwrap();
-            println!(
+            warn!(
                 "└─>{} [ Drone {} ]: sent A Nack to the Simulation Controller",
                 "!!!".yellow(),
                 self.id
@@ -721,7 +734,7 @@ impl RustasticDrone {
         let prev_node = if let Some(node) = flood_request.path_trace.last() {
             node.0
         } else {
-            eprintln!("A drone can't be the first node in the path-trace.");
+            error!("A drone can't be the first node in the path-trace.");
             todo!("how to tell controller we received a wrong path-trace")
         };
 
@@ -807,7 +820,7 @@ impl RustasticDrone {
                     packet.session_id,
                 );
 
-                println!(
+                info!(
                     "{} [ Drone {} ]: sent a FloodRequest with flood_id: {} to the [ Drone {} ]",
                     "✓".green(),
                     self.id,
@@ -857,7 +870,7 @@ impl RustasticDrone {
             .get(&new_routing_header.hops[new_routing_header.hop_index])
         {
             match sender.send(new_packet.clone()) {
-                Ok(()) => println!(
+                Ok(()) => info!(
                     "{} [ Drone {} ]: sent a FloodResponse with flood_id: {} to [ Drone {} ]",
                     "✓".green(),
                     self.id,
@@ -865,20 +878,22 @@ impl RustasticDrone {
                     &new_routing_header.hops[new_routing_header.hop_index]
                 ),
                 Err(e) => {
-                    println!(
-                        "{} [ Drone {} ]: failed to send the FloodResponse to the Drone {}: {}\n├─>{} Sending to Simulation Controller...",
+                    error!(
+                        "{} [ Drone {} ]: failed to send the FloodResponse to the Drone {}: {}",
                         "✗".red(),
                         self.id,
                         &new_routing_header.hops[new_routing_header.hop_index],
-                        e,
-                        "!!!".yellow()
+                        e
                     );
+
+                warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
+
                     
                     self.controller_send
                         .send(DroneEvent::PacketDropped(new_packet))
                         .unwrap();
 
-                    println!(
+                    warn!(
                         "└─>{} [ Drone {} ]: sent the FloodResponse to the Simulation Controller",
                         "!!!".yellow(),
                         self.id
@@ -887,20 +902,21 @@ impl RustasticDrone {
             }
         } else {
             // If the next hop is unavailable, send the packet to the simulation controller
-            println!(
-                "{} [ Drone {} ]: failed to send the FloodResponse: No connection to [ Drone {} ]\n├─>{} Sending to Simulation Controller...",
+            error!(
+                "{} [ Drone {} ]: failed to send the FloodResponse: No connection to [ Drone {} ]",
                 "✗".red(),
                 self.id,
-                &new_routing_header.hops[new_routing_header.hop_index],
-                "!!!".yellow()
+                &new_routing_header.hops[new_routing_header.hop_index]
             );
+
+            warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
 
             // Send the packet to the simulation controller
             self.controller_send
                 .send(DroneEvent::PacketDropped(new_packet))
                 .unwrap();
 
-            println!(
+            warn!(
                 "└─>{} [ Drone {} ]: sent the FloodResponse to the Simulation Controller",
                 "!!!".yellow(),
                 self.id
@@ -952,14 +968,14 @@ impl RustasticDrone {
         };
 
         match dest_node.1.send(new_packet.clone()) {
-            Ok(()) => println!(
+            Ok(()) => info!(
                 "{} [ Drone {} ]: sent the FloodRequest with flood_id: {} sent to [ Drone {} ]",
                 "✓".green(),
                 self.id,
                 flood_id,
                 dest_node.0
             ),
-            Err(e) => println!(
+            Err(e) => error!(
                 "{} [ Drone {} ]: failed to send FloodRequest to the [ Drone {} ]: {}",
                 "✗".red(),
                 self.id,
@@ -1013,7 +1029,7 @@ impl RustasticDrone {
 
         if let Some(sender) = self.packet_send.get(&dest_node) {
             match sender.send(new_packet.clone()) {
-                Ok(()) => println!(
+                Ok(()) => info!(
                     "{} [ Drone {} ]: sent the FloodResponse to [ Drone {} ]\n└─>Reason: {}",
                     "✓".green(),
                     self.id,
@@ -1021,20 +1037,21 @@ impl RustasticDrone {
                     reason
                 ),
                 Err(e) => {
-                    println!(
-                        "{} [ Drone {} ]: Failed to send the FloodResponse to [ Drone {} ]: {}\n├─>{} Sending to Simulation Controller...",
+                    error!(
+                        "{} [ Drone {} ]: Failed to send the FloodResponse to [ Drone {} ]: {}",
                         "✗".red(),
                         self.id,
                         dest_node,
-                        e,
-                        "!!!".yellow()
+                        e
                     );
+
+                    warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
 
                     self.controller_send
                         .send(DroneEvent::PacketDropped(new_packet))
                         .unwrap();
 
-                    println!(
+                    warn!(
                         "└─>{} [ Drone {} ]: FloodResponse sent to Simulation Controller",
                         "!!!".yellow(),
                         self.id
@@ -1043,19 +1060,20 @@ impl RustasticDrone {
             }
         } else {
             // Handle the case where there is no connection to the destination drone
-            println!(
-                "{} [ Drone {} ]: Failed to send the FloodResponse: No connection to [ Drone {} ]\n├─>{} Sending to Simulation Controller...",
+            error!(
+                "{} [ Drone {} ]: Failed to send the FloodResponse: No connection to [ Drone {} ]",
                 "✗".red(),
                 self.id,
-                dest_node,
-                "!!!".yellow()
+                dest_node
             );
+
+            warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
 
             self.controller_send
                 .send(DroneEvent::PacketDropped(new_packet))
                 .unwrap();
 
-            println!(
+            warn!(
                 "└─>{} [ Drone {} ]: FloodResponse sent to Simulation Controller",
                 "!!!".yellow(),
                 self.id
@@ -1096,7 +1114,7 @@ impl RustasticDrone {
                 if let std::collections::hash_map::Entry::Vacant(e) =
                     self.packet_send.entry(node_id)
                 {
-                    println!(
+                    info!(
                         "{} Adding sender: {} to [ Drone {} ]",
                         "✓".green(),
                         node_id,
@@ -1104,7 +1122,7 @@ impl RustasticDrone {
                     );
                     e.insert(sender);
                 } else {
-                    println!(
+                    warn!(
                         "{} [ Drone {} ] is already connected to [ Drone {} ]",
                         "!!!".yellow(),
                         self.id,
@@ -1114,7 +1132,7 @@ impl RustasticDrone {
             }
             DroneCommand::SetPacketDropRate(pdr) => {
                 if (0.0..=1.0).contains(&pdr) {
-                    println!(
+                    info!(
                         "{} Setting [ Drone {} ] pdr to: {}",
                         "✓".green(),
                         self.id,
@@ -1122,7 +1140,7 @@ impl RustasticDrone {
                     );
                     self.pdr = pdr;
                 } else {
-                    println!(
+                    error!(
                         "{} The pdr is a value that must be between `0.0` and `1.0`",
                         "✗".red()
                     );
@@ -1130,14 +1148,14 @@ impl RustasticDrone {
             }
             DroneCommand::RemoveSender(node_id) => {
                 if !self.packet_send.contains_key(&node_id) {
-                    println!(
+                    warn!(
                         "{} [ Drone {} ] is already disconnected from [ Drone {} ]",
                         "!!!".yellow(),
                         self.id,
                         node_id
                     );
                 } else {
-                    println!(
+                    info!(
                         "{} Removing sender: {} from [ Drone {} ]",
                         "✓".green(),
                         node_id,
