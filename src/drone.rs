@@ -99,7 +99,7 @@ impl Drone for RustasticDrone {
     ///
     /// Command from simulation controller are prioritized over data packets
     ///
-    /// **Behavior:**
+    /// # Behavior:
     /// - If a `DroneCommand::Crash` is received, the loop terminates and a warning message is logged.
     /// - Other commands are passed to the `handle_command` function for further processing.
     /// - Received packets are passed to the `handle_packet` function for handling.
@@ -185,7 +185,7 @@ impl RustasticDrone {
                     "✗".red(),
                     self.id
                 );
-                self.send_nack(packet.clone(), None, NackType::DestinationIsDrone);
+                self.send_nack(packet, None, NackType::DestinationIsDrone);
                 return;
             }
 
@@ -367,7 +367,7 @@ impl RustasticDrone {
     /// }
     /// ```
     fn check_packet_correct_id(&self, packet: Packet) -> bool {
-        if self.id == packet.clone().routing_header.hops[packet.clone().routing_header.hop_index] {
+        if self.id == packet.routing_header.hops[packet.routing_header.hop_index] {
             true
         } else {
             self.send_nack(packet, None, NackType::UnexpectedRecipient(self.id));
@@ -733,7 +733,7 @@ impl RustasticDrone {
             node.0
         } else {
             error!("A drone can't be the first node in the path-trace.");
-            todo!("how to tell controller we received a wrong path-trace")
+            return;
         };
 
         // Add the current drone to the path-trace
