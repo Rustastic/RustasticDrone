@@ -35,7 +35,6 @@ fn test_add_sender() {
     handler.join().unwrap();
     let drone = drone.lock().unwrap();
     // println!("{drone:?}");
-    //TODO cannot access private field because test is not a submodule of drone
     assert_ne!(*drone.packet_send.iter().last().unwrap().0, 15u8);
 }
 
@@ -52,7 +51,7 @@ fn test_set_pdr() {
         HashMap::new(),
         0f32,
     )));
-    println!("{drone_thread:?}");
+    // println!("{drone_thread:?}");
     let drone = drone_thread.clone();
 
     let handler = thread::spawn(move || drone_thread.lock().unwrap().run());
@@ -66,9 +65,11 @@ fn test_set_pdr() {
     handler.join().unwrap();
 
     let drone = drone.lock().unwrap();
-    println!("{drone:?}");
-    //TODO cannot access private field because test is not a submodule of drone
-    // assert_ne!(drone.pdr, 0.05);
+    // println!("{drone:?}");
+    #[allow(clippy::float_cmp)]
+    {
+        assert_ne!(drone.pdr, 0.05);
+    }
 }
 #[test]
 fn test_remove_sender() {
