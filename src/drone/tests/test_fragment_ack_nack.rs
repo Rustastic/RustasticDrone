@@ -1,5 +1,4 @@
-use rustastic_drone::RustasticDrone;
-
+use crate::RustasticDrone;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::{
     collections::HashMap,
