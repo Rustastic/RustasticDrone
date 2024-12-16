@@ -73,24 +73,32 @@ fn test_set_pdr() {
 }
 #[test]
 fn test_remove_sender() {
-    let (send_to_drone, receive_from_drone) = unbounded();
-
-    let mut drone = RustasticDrone::new(
-        0,
-        unbounded().0,
-        receive_from_drone,
+    let (drone_to_controller, _controller_from_drone) = unbounded();
+    let (controller_to_drone, drone_from_controller) = unbounded();
+    let mut sender = HashMap::new();
+    sender.insert(2, unbounded().0);
+    let drone_thread = Arc::new(Mutex::new(RustasticDrone::new(
+        1,
+        drone_to_controller.clone(),
+        drone_from_controller,
         unbounded().1,
-        HashMap::new(),
+        sender,
         0f32,
-    );
-    let join = thread::spawn(move || drone.run());
+    )));
+    println!("{drone_thread:?}");
+    let drone = drone_thread.clone();
 
-    send_to_drone
-        .send(DroneCommand::AddSender(2, unbounded().0))
+    let handler = thread::spawn(move || drone_thread.lock().unwrap().run());
+    controller_to_drone
+        .send(DroneCommand::RemoveSender(2))
         .unwrap();
-    send_to_drone.send(DroneCommand::RemoveSender(2)).unwrap();
 
-    thread::sleep(Duration::from_secs(2));
-    send_to_drone.send(DroneCommand::Crash).unwrap();
-    join.join().unwrap();
+    thread::sleep(Duration::from_secs(1));
+    controller_to_drone.send(DroneCommand::Crash).unwrap();
+    handler.join().unwrap();
+
+    let drone = drone.lock().unwrap();
+    println!("{drone:?}");
+    //TODO cannot access private field because test is not a submodule of drone
+    // assert_eq!( drone.packet_send.iter().last().1, 2 ) ;
 }
