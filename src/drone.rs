@@ -89,20 +89,20 @@ impl Drone for RustasticDrone {
         }
     }
 
-/// Runs the main loop of the drone, continuously processing commands and packets.
-///
-/// This function enters an infinite loop, constantly monitoring two channels:
-/// - `self.controller_recv`: Receives commands from the drone controller.
-/// - `self.packet_recv`: Receives raw data packets.
-///
-/// The loop uses `select_biased!` to efficiently handle incoming data from both channels.
-/// 
-/// Command from simulation controller are prioritized over data packets
-/// 
-/// **Behavior:**
-/// - If a `DroneCommand::Crash` is received, the loop terminates and a warning message is logged.
-/// - Other commands are passed to the `handle_command` function for further processing.
-/// - Received packets are passed to the `handle_packet` function for handling.
+    /// Runs the main loop of the drone, continuously processing commands and packets.
+    ///
+    /// This function enters an infinite loop, constantly monitoring two channels:
+    /// - `self.controller_recv`: Receives commands from the drone controller.
+    /// - `self.packet_recv`: Receives raw data packets.
+    ///
+    /// The loop uses `select_biased!` to efficiently handle incoming data from both channels.
+    ///
+    /// Command from simulation controller are prioritized over data packets
+    ///
+    /// **Behavior:**
+    /// - If a `DroneCommand::Crash` is received, the loop terminates and a warning message is logged.
+    /// - Other commands are passed to the `handle_command` function for further processing.
+    /// - Received packets are passed to the `handle_packet` function for handling.
     fn run(&mut self) {
         loop {
             select_biased! {
@@ -136,7 +136,7 @@ impl RustasticDrone {
     /// can be forwarded to the correct next hop. If any errors are found, appropriate `Nack` packets are sent.
     ///
     /// # Packet Handling Logic
-    /// - **`FloodRequest`**: If the packet is a flood request, it handles the request by calling `handle_flood_request`, 
+    /// - **`FloodRequest`**: If the packet is a flood request, it handles the request by calling `handle_flood_request`,
     ///   and then adds the flood ID to the `flood_id_received` set to prevent duplicate processing of the same flood.
     /// - **Correct Packet ID**: If the packet has the correct ID and is routable, it continues with routing and hop management.
     /// - **Destination Check**: If the destination of the packet is not a valid destination (e.g., a drone instead of a client/server),
@@ -1105,7 +1105,7 @@ impl RustasticDrone {
     ///
     /// # Panic:
     /// - Panic if a command of type `DroneCommand::Crash` is passed
-    /// 
+    ///
     /// # Example:
     /// ```rust
     /// drone.handle_command(DroneCommand::AddSender(node_id, sender));
