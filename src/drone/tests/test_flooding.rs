@@ -1,3 +1,4 @@
+use crate::RustasticDrone;
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use std::{
     collections::{HashMap, HashSet},
@@ -11,7 +12,6 @@ use wg_2024::{
     network::{NodeId, SourceRoutingHeader},
     packet::{FloodRequest, FloodResponse, NodeType, Packet, PacketType},
 };
-use crate::RustasticDrone;
 
 struct Host {
     id: NodeId,

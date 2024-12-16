@@ -1,3 +1,4 @@
+use crate::RustasticDrone;
 use crossbeam_channel::unbounded;
 use std::{
     collections::HashMap,
@@ -6,7 +7,6 @@ use std::{
     time::Duration,
 };
 use wg_2024::{controller::DroneCommand, drone::Drone};
-use crate::RustasticDrone;
 
 #[test]
 fn test_add_sender() {
@@ -100,5 +100,5 @@ fn test_remove_sender() {
 
     let drone = drone.lock().unwrap();
     // println!("{drone:?}");
-    assert_ne!( *drone.packet_send.iter().last().unwrap().0, 2 ) ;
+    assert_ne!(*drone.packet_send.iter().last().unwrap().0, 2);
 }
