@@ -1,5 +1,3 @@
-use rustastic_drone::RustasticDrone;
-
 use crossbeam_channel::unbounded;
 use std::{
     collections::HashMap,
@@ -8,6 +6,7 @@ use std::{
     time::Duration,
 };
 use wg_2024::{controller::DroneCommand, drone::Drone};
+use crate::RustasticDrone;
 
 #[test]
 fn test_add_sender() {
@@ -22,7 +21,7 @@ fn test_add_sender() {
         HashMap::new(),
         0f32,
     )));
-    println!("{drone_thread:?}");
+    // println!("{drone_thread:?}");
     let drone = drone_thread.clone();
 
     let handler = thread::spawn(move || drone_thread.lock().unwrap().run());
@@ -35,9 +34,9 @@ fn test_add_sender() {
     controller_to_drone.send(DroneCommand::Crash).unwrap();
     handler.join().unwrap();
     let drone = drone.lock().unwrap();
-    println!("{drone:?}");
+    // println!("{drone:?}");
     //TODO cannot access private field because test is not a submodule of drone
-    // assert_ne!(drone.packet_send.iter().last().0, 15);
+    assert_ne!(*drone.packet_send.iter().last().unwrap().0, 15u8);
 }
 
 #[test]

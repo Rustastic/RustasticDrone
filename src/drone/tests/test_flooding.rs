@@ -11,8 +11,7 @@ use wg_2024::{
     network::{NodeId, SourceRoutingHeader},
     packet::{FloodRequest, FloodResponse, NodeType, Packet, PacketType},
 };
-
-use rustastic_drone::RustasticDrone;
+use crate::RustasticDrone;
 
 struct Host {
     id: NodeId,
