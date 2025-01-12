@@ -454,9 +454,7 @@ impl RustasticDrone {
                 self.send_nack(packet, None, NackType::Dropped);
             }
         } else {
-            if packet.routing_header.hop_index < packet.routing_header.hops.len() - 1 {
-                packet.routing_header.hop_index += 1; // Move to the next hop
-            } else {
+            if packet.routing_header.hop_index = packet.routing_header.hops.len() - 1 {
                 error!(
                     "{} Invalid hop index increment detected in [ Drone: {} ] for header of Packet [ session_id: {} ]",
                     "✗".red(),
