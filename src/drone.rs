@@ -503,7 +503,7 @@ impl RustasticDrone {
                 packet.session_id,
                 self.id
             );
-            packet.routing_header.hop_index -= 2; //because the packet was already incremented in the handle_packet
+            packet.routing_header.hop_index -= 1; //because the packet was already incremented in the handle_packet
             self.send_nack(packet, Some(fragment), NackType::Dropped);
         } else {
             // Add the fragment to the buffer
