@@ -494,7 +494,7 @@ impl RustasticDrone {
     /// let fragment = Fragment { /* fragment data */ };
     /// drone.handle_fragment(packet, fragment);
     /// ```
-    fn handle_fragment(&mut self, mut packet: Packet, fragment: Fragment) {
+    fn handle_fragment(&mut self, packet: Packet, fragment: Fragment) {
         if self.check_drop_fragment() {
             warn!(
                 "{} Fragment [ fragment_index: {} ] of the Packet [ session_id: {} ] has been dropped by [ Drone {} ]",
