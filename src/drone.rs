@@ -409,8 +409,13 @@ impl RustasticDrone {
     /// ```
     fn handle_ack_nack(&mut self, mut packet: Packet) {
         if packet.routing_header.hop_index >= packet.routing_header.hops.len() {
-            // It can't happen
-            unreachable!("{} Source is not a client!", "PANIC".purple());
+            error!(
+                "{} Invalid hop index increment detected in [ Drone: {} ] for header of Packet [ session_id: {} ]",
+                "✗".red(),
+                self.id,
+                packet.session_id
+            );
+            return;
         }
         if let PacketType::Nack(nack) = packet.clone().pack_type {
             warn!(
@@ -439,9 +444,9 @@ impl RustasticDrone {
                 );
 
                 // Resend the fragment, reverse the path
-                packet.routing_header.hop_index -= 1;
+                //packet.routing_header.hop_index -= 1;
                 packet.routing_header.reverse();
-                packet.routing_header.hop_index += 1;
+                //packet.routing_header.hop_index += 1;
                 let new_packet = Packet {
                     pack_type: PacketType::MsgFragment(fragment.clone()),
                     routing_header: packet.routing_header.clone(),
@@ -455,15 +460,6 @@ impl RustasticDrone {
                 self.send_message(packet);
             }
         } else {
-            if packet.routing_header.hop_index == packet.routing_header.hops.len() - 1 {
-                error!(
-                    "{} Invalid hop index increment detected in [ Drone: {} ] for header of Packet [ session_id: {} ]",
-                    "✗".red(),
-                    self.id,
-                    packet.session_id
-                );
-                return;
-            }
             self.send_message(packet);
         }
     }
