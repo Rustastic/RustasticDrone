@@ -6,12 +6,12 @@
 //!
 //! Author: Rustastic (Andrea Carzeri, Alessandro Busola, Andrea Denina, Giulio Bosio)
 
+use crate::packet_buffer;
 use colored::Colorize;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use log::{error, info, warn};
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
-
 use wg_2024::{
     controller::{DroneCommand, DroneEvent},
     drone::Drone,
@@ -19,7 +19,8 @@ use wg_2024::{
     packet::{FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType},
 };
 
-use crate::packet_buffer;
+#[cfg(test)]
+mod tests;
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone)]

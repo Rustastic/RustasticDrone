@@ -1,5 +1,4 @@
-use rustastic_drone::RustasticDrone;
-
+use crate::RustasticDrone;
 use crossbeam_channel::unbounded;
 use std::{
     collections::HashMap,
@@ -22,7 +21,7 @@ fn test_add_sender() {
         HashMap::new(),
         0f32,
     )));
-    println!("{drone_thread:?}");
+    // println!("{drone_thread:?}");
     let drone = drone_thread.clone();
 
     let handler = thread::spawn(move || drone_thread.lock().unwrap().run());
@@ -35,9 +34,8 @@ fn test_add_sender() {
     controller_to_drone.send(DroneCommand::Crash).unwrap();
     handler.join().unwrap();
     let drone = drone.lock().unwrap();
-    println!("{drone:?}");
-    //TODO cannot access private field because test is not a submodule of drone
-    // assert_ne!(drone.packet_send.iter().last().0, 15);
+    // println!("{drone:?}");
+    assert_eq!(*drone.packet_send.iter().last().unwrap().0, 15u8);
 }
 
 #[test]
@@ -53,7 +51,7 @@ fn test_set_pdr() {
         HashMap::new(),
         0f32,
     )));
-    println!("{drone_thread:?}");
+    // println!("{drone_thread:?}");
     let drone = drone_thread.clone();
 
     let handler = thread::spawn(move || drone_thread.lock().unwrap().run());
@@ -67,15 +65,18 @@ fn test_set_pdr() {
     handler.join().unwrap();
 
     let drone = drone.lock().unwrap();
-    println!("{drone:?}");
-    //TODO cannot access private field because test is not a submodule of drone
-    // assert_ne!(drone.pdr, 0.05);
+    // println!("{drone:?}");
+    #[allow(clippy::float_cmp)]
+    {
+        assert_eq!(drone.pdr, 0.05);
+    }
 }
 #[test]
 fn test_remove_sender() {
     let (drone_to_controller, _controller_from_drone) = unbounded();
     let (controller_to_drone, drone_from_controller) = unbounded();
     let mut sender = HashMap::new();
+    sender.insert(3, unbounded().0);
     sender.insert(2, unbounded().0);
     let drone_thread = Arc::new(Mutex::new(RustasticDrone::new(
         1,
@@ -85,7 +86,7 @@ fn test_remove_sender() {
         sender,
         0f32,
     )));
-    println!("{drone_thread:?}");
+    // println!("{drone_thread:?}");
     let drone = drone_thread.clone();
 
     let handler = thread::spawn(move || drone_thread.lock().unwrap().run());
@@ -98,7 +99,6 @@ fn test_remove_sender() {
     handler.join().unwrap();
 
     let drone = drone.lock().unwrap();
-    println!("{drone:?}");
-    //TODO cannot access private field because test is not a submodule of drone
-    // assert_eq!( drone.packet_send.iter().last().1, 2 ) ;
+    // println!("{drone:?}");
+    assert_ne!(*drone.packet_send.iter().last().unwrap().0, 2);
 }
