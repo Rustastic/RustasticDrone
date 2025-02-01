@@ -452,7 +452,7 @@ impl RustasticDrone {
                 info!("└─>{} The Packet was sent", "✓".green());
             } else {
                 // Send a nack to the previous node
-                self.send_nack(packet, None, NackType::Dropped);
+                self.send_message(packet);
             }
         } else {
             if packet.routing_header.hop_index == packet.routing_header.hops.len() - 1 {
@@ -503,7 +503,6 @@ impl RustasticDrone {
                 packet.session_id,
                 self.id
             );
-            packet.routing_header.hop_index -= 1; //because the packet was already incremented in the handle_packet
             self.send_nack(packet, Some(fragment), NackType::Dropped);
         } else {
             // Add the fragment to the buffer
@@ -554,16 +553,16 @@ impl RustasticDrone {
     /// ```
     fn send_nack(&self, mut packet: Packet, fragment: Option<Fragment>, nack_type: NackType) {
         // Reverse the routing header to get the previous hop
+        packet.routing_header.hop_index -= 1;
         packet.routing_header.reverse();
         let prev_hop = packet.routing_header.next_hop().unwrap();
-
+        packet.routing_header.increase_hop_index();
         // Attempt to send the NACK to the previous hop
         if let Some(sender) = self.packet_send.get(&prev_hop) {
             let mut nack = Nack {
                 fragment_index: 0, // Default fragment index for non-fragmented NACKs
                 nack_type,
             };
-
             // If it's a fragment, set the fragment index and NACK type accordingly
             if let Some(frag) = fragment {
                 nack = Nack {
