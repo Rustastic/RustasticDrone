@@ -444,9 +444,9 @@ impl RustasticDrone {
                 );
 
                 // Resend the fragment, reverse the path
-                //packet.routing_header.hop_index -= 1;
+                packet.routing_header.hop_index -= 1;
                 packet.routing_header.reverse();
-                //packet.routing_header.hop_index += 1;
+                packet.routing_header.hop_index += 1;
                 let new_packet = Packet {
                     pack_type: PacketType::MsgFragment(fragment.clone()),
                     routing_header: packet.routing_header.clone(),
