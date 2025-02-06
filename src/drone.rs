@@ -572,15 +572,11 @@ impl RustasticDrone {
     /// drone.send_nack(packet, fragment, nack_type);
     /// ```
     fn send_nack(&self, mut packet: Packet, fragment: Option<Fragment>, nack_type: NackType) {
-        packet.routing_header.hop_index -= 1;
-
         packet
             .routing_header
             .hops
-            .drain(packet.routing_header.hop_index..);
+            .drain(packet.routing_header.hop_index - 1..);
         packet.routing_header.reverse();
-
-        let prev_hop = 1;
 
         // Attempt to send the NACK to the previous hop
 
