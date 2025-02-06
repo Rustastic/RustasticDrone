@@ -8,7 +8,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
-use wg_2024::packet::{Fragment, Packet, PacketType};
+use wg_2024::packet::{Packet, PacketType};
 
 /// A buffer to store and manage packets containing fragments for packet transmission.
 ///

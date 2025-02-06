@@ -134,7 +134,18 @@ fn test_handle_nack() {
 
     {
         let mut drone = drone.lock().unwrap();
-        drone.buffer.add_fragment(123, fragment.clone());
+        drone.buffer.add_fragment(
+            123,
+            fragment.fragment_index,
+            Packet {
+                routing_header: SourceRoutingHeader {
+                    hop_index: 1,
+                    hops: vec![1, 2],
+                },
+                session_id: 123,
+                pack_type: PacketType::MsgFragment(fragment.clone()),
+            },
+        );
     }
 
     // Crea un pacchetto NACK

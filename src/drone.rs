@@ -427,7 +427,7 @@ impl RustasticDrone {
     /// let packet = Packet { /* packet data */ };
     /// drone.handle_ack_nack(packet);
     /// ```
-    fn handle_ack_nack(&mut self, mut packet: Packet) {
+    fn handle_ack_nack(&mut self, packet: Packet) {
         if packet.routing_header.hop_index >= packet.routing_header.hops.len() {
             error!(
                 "{} Invalid hop index increment detected in [ Drone: {} ] for header of Packet [ session_id: {} ]",
@@ -452,26 +452,17 @@ impl RustasticDrone {
             );
 
             // Check if the fragment is in the buffer
-            if let Some(fragment) = self
+            if let Some(new_packet) = self
                 .buffer
                 .get_fragment(packet.clone().session_id, nack.fragment_index)
             {
                 info!(
                     "├─>{} Fragment [ fragment_index: {} ] of the Packet [ session_id: {} ]  was found in the buffer",
                     "✓".green(),
-                    fragment.fragment_index,
+                    nack.fragment_index,
                     packet.session_id
                 );
 
-                // Resend the fragment, reverse the path
-                packet.routing_header.hop_index -= 1;
-                packet.routing_header.reverse();
-                packet.routing_header.hop_index += 1;
-                let new_packet = Packet {
-                    pack_type: PacketType::MsgFragment(fragment.clone()),
-                    routing_header: packet.routing_header.clone(),
-                    session_id: packet.session_id,
-                };
                 self.send_message(new_packet);
 
                 info!("└─>{} The Packet was sent", "✓".green());
@@ -539,8 +530,11 @@ impl RustasticDrone {
                 packet.session_id
             );
 
-            self.buffer
-                .add_fragment(packet.clone().session_id, fragment);
+            self.buffer.add_fragment(
+                packet.clone().session_id,
+                fragment.fragment_index,
+                packet.clone(),
+            );
 
             warn!(
                 "└─>{} Fragment was added to the [ Drone {} ] buffer",
