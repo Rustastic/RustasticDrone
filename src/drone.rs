@@ -578,6 +578,8 @@ impl RustasticDrone {
             .drain(packet.routing_header.hop_index..);
         packet.routing_header.reverse();
 
+        let prev_hop = packet.routing_header.current_hop().unwrap();
+
         // Attempt to send the NACK to the previous hop
 
         let mut nack = Nack {
