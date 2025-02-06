@@ -8,18 +8,18 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
-use wg_2024::packet::Fragment;
+use wg_2024::packet::{Fragment, Packet, PacketType};
 
-/// A buffer to store and manage fragments for packet transmission.
+/// A buffer to store and manage packets containing fragments for packet transmission.
 ///
-/// The `PacketBuffer` maintains an ordered collection of fragments, allowing efficient
-/// addition, retrieval, and removal of fragments. It ensures that older fragments are
+/// The `PacketBuffer` maintains an ordered collection of packets, allowing efficient
+/// addition, retrieval, and removal of packets. It ensures that older packets are
 /// automatically evicted when the buffer reaches its maximum capacity.
 #[derive(Clone, Debug)]
 pub struct PacketBuffer {
-    /// Stores the fragments using `(session_id, fragment_index)` as the key.
-    buffer: HashMap<(u64, u64), Fragment>,
-    /// Maintains the insertion order of keys for efficient eviction of old fragments.
+    /// Stores the packets using `(session_id, fragment_index)` as the key.
+    buffer: HashMap<(u64, u64), Packet>,
+    /// Maintains the insertion order of keys for efficient eviction of old packets.
     order: VecDeque<(u64, u64)>,
     /// Maximum capacity of the buffer.
     max_size: usize,
@@ -30,7 +30,7 @@ impl PacketBuffer {
     ///
     /// # Parameters
     ///
-    /// - `max_size`: The maximum number of fragments the buffer can hold.
+    /// - `max_size`: The maximum number of packets the buffer can hold.
     ///
     /// # Returns
     ///
@@ -43,50 +43,51 @@ impl PacketBuffer {
         }
     }
 
-    /// Adds a fragment to the buffer.
+    /// Adds a packet to the buffer.
     ///
-    /// If the buffer is full, the oldest fragment is removed to make space for the new one.
+    /// If the buffer is full, the oldest packet is removed to make space for the new one.
     ///
     /// # Parameters
     ///
-    /// - `session_id`: The session ID associated with the fragment.
-    /// - `fragment`: The fragment to add.
-    pub fn add_fragment(&mut self, session_id: u64, fragment: Fragment) {
-        let key = (session_id, fragment.fragment_index);
+    /// - `session_id`: The session ID associated with the packet.
+    /// - `fragment_index`: The fragment_index that indentifies the packet to add.
+    /// - `packet`: The packet to add.
+    pub fn add_fragment(&mut self, session_id: u64, fragment_index: u64, packet: Packet) {
+        let key = (session_id, fragment_index);
 
-        // If the buffer is full, remove the oldest fragment.
+        // If the buffer is full, remove the oldest packet.
         if self.buffer.len() >= self.max_size {
             if let Some(oldest) = self.order.pop_front() {
                 self.buffer.remove(&oldest);
             }
         }
 
-        // Add the new fragment.
-        self.buffer.insert(key, fragment);
+        // Add the new packet.
+        self.buffer.insert(key, packet);
         self.order.push_back(key);
     }
 
-    /// Retrieves and removes a fragment from the buffer.
+    /// Retrieves and removes a packet from the buffer.
     ///
     /// # Parameters
     ///
-    /// - `session_id`: The session ID associated with the fragment.
-    /// - `fragment_index`: The index of the fragment.
+    /// - `session_id`: The session ID associated with the packet.
+    /// - `fragment_index`: The index of the fragment inside the packet .
     ///
     /// # Returns
     ///
-    /// - `Some(Fragment)`: The fragment if found in the buffer.
-    /// - `None`: If the fragment is not found.
-    pub fn get_fragment(&mut self, session_id: u64, fragment_index: u64) -> Option<Fragment> {
+    /// - `Some(Packet)`: The packet if found in the buffer.
+    /// - `None`: If the packet is not found.
+    pub fn get_fragment(&mut self, session_id: u64, fragment_index: u64) -> Option<Packet> {
         let key = (session_id, fragment_index);
-        // Remove the fragment from the HashMap.
-        if let Some(fragment) = self.buffer.remove(&key) {
+        // Remove the packet from the HashMap.
+        if let Some(packet) = self.buffer.remove(&key) {
             // Remove the key from the VecDeque.
             if let Some(pos) = self.order.iter().position(|&k| k == key) {
                 self.order.remove(pos);
             }
-            // Return the removed fragment.
-            return Some(fragment);
+            // Return the removed packet.
+            return Some(packet);
         }
         None
     }
@@ -108,7 +109,7 @@ impl PacketBuffer {
 impl fmt::Display for PacketBuffer {
     /// Provides a human-readable representation of the buffer's contents.
     ///
-    /// The output includes the buffer's maximum size, current size, and details of each fragment.
+    /// The output includes the buffer's maximum size, current size, and details of each packet.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
@@ -117,13 +118,15 @@ impl fmt::Display for PacketBuffer {
             self.buffer.len()
         )?;
 
-        for (key, fragment) in &self.buffer {
+        for (key, packet) in &self.buffer {
             let (session_id, fragment_index) = key;
-            writeln!(
-                f,
-                "  Session ID: {}, Fragment Index: {}, Total Fragments: {}, Length: {}",
-                session_id, fragment_index, fragment.total_n_fragments, fragment.length
-            )?;
+            if let PacketType::MsgFragment(fragment) = &packet.pack_type {
+                writeln!(
+                    f,
+                    "  Session ID: {}, Fragment Index: {}, Total Fragments: {}, Length: {}",
+                    session_id, fragment_index, fragment.total_n_fragments, fragment.length
+                )?;
+            }
         }
 
         Ok(())
