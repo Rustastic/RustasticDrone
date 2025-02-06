@@ -185,7 +185,12 @@ impl RustasticDrone {
                     "✗".red(),
                     self.id
                 );
-                self.send_nack(packet, None, NackType::DestinationIsDrone);
+                if let PacketType::MsgFragment(frag) = packet.clone().pack_type {
+                    self.send_nack(packet, Some(frag), NackType::DestinationIsDrone);
+                } else {
+                    self.send_nack(packet, None, NackType::DestinationIsDrone);
+                }
+
                 return;
             }
 
@@ -199,7 +204,7 @@ impl RustasticDrone {
                     self.id,
                     neighbor
                 );
-                self.send_nack(packet, None, NackType::ErrorInRouting(self.id));
+                self.send_nack(packet, None, NackType::ErrorInRouting(neighbor));
                 return;
             }
 
@@ -270,6 +275,9 @@ impl RustasticDrone {
                         packet_type,
                         destination
                     );
+                    self.controller_send
+                        .send(DroneEvent::PacketSent(packet))
+                        .unwrap();
                     true
                 }
                 Err(e) => {
@@ -286,7 +294,7 @@ impl RustasticDrone {
                     warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
 
                     self.controller_send
-                        .send(DroneEvent::PacketDropped(packet))
+                        .send(DroneEvent::ControllerShortcut(packet))
                         .unwrap();
 
                     warn!(
@@ -301,11 +309,16 @@ impl RustasticDrone {
             }
         } else {
             // Handle case where there is no connection to the destination drone
-            if let PacketType::MsgFragment(_) = packet_type {
+            if let PacketType::MsgFragment(fragment) = packet_type {
                 error!(
                     "{} [ Drone {} ]: does not exist in the path",
                     "✗".red(),
                     destination
+                );
+                self.send_nack(
+                    packet,
+                    Some(fragment),
+                    NackType::ErrorInRouting(destination),
                 );
             } else {
                 error!(
@@ -319,7 +332,7 @@ impl RustasticDrone {
                 warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
 
                 self.controller_send
-                    .send(DroneEvent::PacketDropped(packet))
+                    .send(DroneEvent::ControllerShortcut(packet))
                     .unwrap();
 
                 warn!(
@@ -366,16 +379,23 @@ impl RustasticDrone {
     ///     println!("Packet addressed to the wrong drone.");
     /// }
     /// ```
-    fn check_packet_correct_id(&self, packet: Packet) -> bool {
+    fn check_packet_correct_id(&self, mut packet: Packet) -> bool {
         if self.id == packet.routing_header.hops[packet.routing_header.hop_index] {
             true
         } else {
-            self.send_nack(packet, None, NackType::UnexpectedRecipient(self.id));
             error!(
                 "{} [ Drone {} ]: does not correspond to the Drone indicated by the `hop_index`",
                 "✗".red(),
                 self.id
             );
+
+            packet.routing_header.hop_index += 1;
+            if let PacketType::MsgFragment(frag) = packet.clone().pack_type {
+                self.send_nack(packet, Some(frag), NackType::UnexpectedRecipient(self.id));
+            } else {
+                self.send_nack(packet, None, NackType::UnexpectedRecipient(self.id));
+            }
+
             false
         }
     }
@@ -460,6 +480,12 @@ impl RustasticDrone {
                 self.send_message(packet);
             }
         } else {
+            info!(
+                "{} [ Drone {} ]: received a {}",
+                "i".blue(),
+                self.id,
+                packet.pack_type,
+            );
             self.send_message(packet);
         }
     }
@@ -499,6 +525,9 @@ impl RustasticDrone {
                 packet.session_id,
                 self.id
             );
+            self.controller_send
+                .send(DroneEvent::PacketDropped(packet.clone()))
+                .unwrap();
             self.send_nack(packet, Some(fragment), NackType::Dropped);
         } else {
             // Add the fragment to the buffer
@@ -512,13 +541,14 @@ impl RustasticDrone {
 
             self.buffer
                 .add_fragment(packet.clone().session_id, fragment);
-            self.send_message(packet);
 
             warn!(
                 "└─>{} Fragment was added to the [ Drone {} ] buffer",
                 "!!!".yellow(),
                 self.id
             );
+
+            self.send_message(packet);
         }
     }
 
@@ -548,28 +578,30 @@ impl RustasticDrone {
     /// drone.send_nack(packet, fragment, nack_type);
     /// ```
     fn send_nack(&self, mut packet: Packet, fragment: Option<Fragment>, nack_type: NackType) {
-        // Reverse the routing header to get the previous hop
         packet.routing_header.hop_index -= 1;
+
+        packet
+            .routing_header
+            .hops
+            .drain(packet.routing_header.hop_index..);
         packet.routing_header.reverse();
-        let prev_hop = packet.routing_header.next_hop().unwrap();
-        packet.routing_header.increase_hop_index();
+
+        let prev_hop = 1;
+
         // Attempt to send the NACK to the previous hop
+
+        let mut nack = Nack {
+            fragment_index: 0, // Default fragment index for non-fragmented NACKs
+            nack_type,
+        };
+
+        if let Some(frag) = fragment {
+            nack.fragment_index = frag.fragment_index;
+        }
+
+        packet.pack_type = PacketType::Nack(nack);
+
         if let Some(sender) = self.packet_send.get(&prev_hop) {
-            let mut nack = Nack {
-                fragment_index: 0, // Default fragment index for non-fragmented NACKs
-                nack_type,
-            };
-            // If it's a fragment, set the fragment index and NACK type accordingly
-            if let Some(frag) = fragment {
-                nack = Nack {
-                    fragment_index: frag.fragment_index,
-                    nack_type: NackType::Dropped,
-                };
-            }
-
-            // Update the packet type to NACK
-            packet.pack_type = PacketType::Nack(nack);
-
             // Send the NACK to the previous hop
             match sender.send(packet.clone()) {
                 Ok(()) => {
@@ -579,6 +611,10 @@ impl RustasticDrone {
                         self.id,
                         prev_hop
                     );
+
+                    self.controller_send
+                        .send(DroneEvent::PacketSent(packet))
+                        .unwrap();
                 }
                 Err(e) => {
                     // Handle failure to send the NACK, send to the simulation controller instead
@@ -594,7 +630,7 @@ impl RustasticDrone {
 
                     //there is an error in sending the packet, the drone should send the packet to the simulation controller
                     self.controller_send
-                        .send(DroneEvent::PacketDropped(packet))
+                        .send(DroneEvent::ControllerShortcut(packet))
                         .unwrap();
                     warn!(
                         "└─>{} [ Drone {} ]: sent A Nack to the Simulation Controller",
@@ -615,22 +651,10 @@ impl RustasticDrone {
             warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
 
             // Create the NACK (same logic as above)
-            let mut nack = Nack {
-                fragment_index: 0,
-                nack_type,
-            };
-
-            if let Some(frag) = fragment {
-                nack = Nack {
-                    fragment_index: frag.fragment_index,
-                    nack_type: NackType::Dropped,
-                };
-            }
-            packet.pack_type = PacketType::Nack(nack);
 
             // Send to the simulation controller
             self.controller_send
-                .send(DroneEvent::PacketDropped(packet))
+                .send(DroneEvent::ControllerShortcut(packet))
                 .unwrap();
             warn!(
                 "└─>{} [ Drone {} ]: sent A Nack to the Simulation Controller",
@@ -882,7 +906,7 @@ impl RustasticDrone {
                     warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
 
                     self.controller_send
-                        .send(DroneEvent::PacketDropped(new_packet))
+                        .send(DroneEvent::ControllerShortcut(new_packet))
                         .unwrap();
 
                     warn!(
@@ -905,7 +929,7 @@ impl RustasticDrone {
 
             // Send the packet to the simulation controller
             self.controller_send
-                .send(DroneEvent::PacketDropped(new_packet))
+                .send(DroneEvent::ControllerShortcut(new_packet))
                 .unwrap();
 
             warn!(
@@ -1040,7 +1064,7 @@ impl RustasticDrone {
                     warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
 
                     self.controller_send
-                        .send(DroneEvent::PacketDropped(new_packet))
+                        .send(DroneEvent::ControllerShortcut(new_packet))
                         .unwrap();
 
                     warn!(
@@ -1062,7 +1086,7 @@ impl RustasticDrone {
             warn!("├─>{} Sending to Simulation Controller...", "!!!".yellow());
 
             self.controller_send
-                .send(DroneEvent::PacketDropped(new_packet))
+                .send(DroneEvent::ControllerShortcut(new_packet))
                 .unwrap();
 
             warn!(
