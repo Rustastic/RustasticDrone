@@ -990,14 +990,19 @@ impl RustasticDrone {
             session_id,
         };
 
-        match dest_node.1.send(new_packet) {
-            Ok(()) => info!(
-                "{} [ Drone {} ]: sent the FloodRequest with flood_id: {} sent to [ Drone {} ]",
-                "✓".green(),
-                self.id,
-                flood_id,
-                dest_node.0
-            ),
+        match dest_node.1.send(new_packet.clone()) {
+            Ok(()) => {
+                info!(
+                    "{} [ Drone {} ]: sent the FloodRequest with flood_id: {} sent to [ Drone {} ]",
+                    "✓".green(),
+                    self.id,
+                    flood_id,
+                    dest_node.0
+                );
+                self.controller_send
+                    .send(DroneEvent::PacketSent(new_packet))
+                    .unwrap();
+            }
             Err(e) => error!(
                 "{} [ Drone {} ]: failed to send FloodRequest to the [ Drone {} ]: {}",
                 "✗".red(),
