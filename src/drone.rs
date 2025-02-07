@@ -139,7 +139,10 @@ impl RustasticDrone {
             }
             PacketType::FloodRequest(_) => {
                 if let Some(sender) = sender {
-                    let _ = sender.send(packet).inspect_err(|_e|{
+                    let _ = sender.send(packet.clone())
+                    .inspect(|()|{
+                        let _ = self.controller_send.send(DroneEvent::PacketSent(packet));
+                    }).inspect_err(|_e|{
                         error!(
                             "{}, [RustasticDrone {}] error sending floodrequest, channel disconnected",
                             "✗".red(),
@@ -150,14 +153,18 @@ impl RustasticDrone {
             }
             PacketType::MsgFragment(_) => {
                 if let Some(sender) = self.get_sender(&packet) {
-                    let _ = sender.send(packet).inspect_err(|_e|{
+                    let _ = sender.send(packet.clone())
+                    .inspect(|()|{
+                        let _ = self.controller_send.send(DroneEvent::PacketSent(packet));
+                    })
+                    .inspect_err(|_e|{
                         error!(
                             "{}, [RustasticDrone {}] error sending msgfragment, channel disconnected",
                             "✗".red(),
                             self.id
                         );
                     });
-                } else { 
+                } else {
                     error!(
                         "{} [RustasticDrone {}] error taking next_hop",
                         "✗".red(),
@@ -178,16 +185,21 @@ impl RustasticDrone {
         match self.get_sender(&packet) {
             Some(sender) => {
                 sender
-                    .send(packet)
+                    .send(packet.clone())
+                    .inspect(|()| {
+                        let _ = self.controller_send.send(DroneEvent::PacketSent(packet));
+                    })
                     .inspect_err(|e| {
-                        let _ = self.controller_send
+                        let _ = self
+                            .controller_send
                             .send(DroneEvent::ControllerShortcut(e.0.clone()));
                     })
                     .ok();
             }
             None => {
                 self.controller_send
-                    .send(DroneEvent::ControllerShortcut(packet)).ok();
+                    .send(DroneEvent::ControllerShortcut(packet))
+                    .ok();
             }
         }
     }
