@@ -128,6 +128,69 @@ impl Drone for RustasticDrone {
 }
 
 impl RustasticDrone {
+    /// Used to send packet
+    ///
+    /// # Arguments
+    /// -  `sender` : to be included only if  `msg`  is of type  `FloodRequest` otherwise it will be ignored
+    fn send_packet(&self, packet: Packet, sender: Option<&Sender<Packet>>) {
+        match packet.pack_type {
+            PacketType::Ack(_) | PacketType::Nack(_) | PacketType::FloodResponse(_) => {
+                self.send_or_shortcut(packet);
+            }
+            PacketType::FloodRequest(_) => {
+                if let Some(sender) = sender {
+                    let _ = sender.send(packet).inspect_err(|_e|{
+                        error!(
+                            "{}, [RustasticDrone {}] error sending floodrequest, channel disconnected",
+                            "✗".red(),
+                            self.id
+                        );
+                    }) ;
+                }
+            }
+            PacketType::MsgFragment(_) => {
+                if let Some(sender) = self.get_sender(&packet) {
+                    let _ = sender.send(packet).inspect_err(|_e|{
+                        error!(
+                            "{}, [RustasticDrone {}] error sending msgfragment, channel disconnected",
+                            "✗".red(),
+                            self.id
+                        );
+                    });
+                } else { 
+                    error!(
+                        "{} [RustasticDrone {}] error taking next_hop",
+                        "✗".red(),
+                        self.id
+                    );
+                }
+            }
+        }
+    }
+    fn get_sender(&self, packet: &Packet) -> Option<Sender<Packet>> {
+        Some(
+            self.packet_send
+                .get(&packet.routing_header.next_hop()?)?
+                .clone(),
+        )
+    }
+    fn send_or_shortcut(&self, packet: Packet) {
+        match self.get_sender(&packet) {
+            Some(sender) => {
+                sender
+                    .send(packet)
+                    .inspect_err(|e| {
+                        let _ = self.controller_send
+                            .send(DroneEvent::ControllerShortcut(e.0.clone()));
+                    })
+                    .ok();
+            }
+            None => {
+                self.controller_send
+                    .send(DroneEvent::ControllerShortcut(packet)).ok();
+            }
+        }
+    }
     /// Handles incoming packets for the drone.
     ///
     /// This method is responsible for processing incoming packets. It checks the type of packet received and
