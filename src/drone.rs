@@ -576,11 +576,10 @@ impl RustasticDrone {
             .routing_header
             .hops
             .drain(packet.routing_header.hop_index..);
-        
+
         packet.routing_header.hops.reverse();
 
         packet.routing_header.hop_index = 1;
-
 
         let prev_hop = packet.routing_header.current_hop().unwrap();
 
