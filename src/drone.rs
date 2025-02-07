@@ -204,7 +204,13 @@ impl RustasticDrone {
                     self.id,
                     neighbor
                 );
-                self.send_nack(packet, None, NackType::ErrorInRouting(neighbor));
+                //problematico 
+                match packet.clone().pack_type {
+                    PacketType::MsgFragment(fragment) => self.send_nack(packet, Some(fragment), NackType::ErrorInRouting(neighbor)),
+                    PacketType::FloodRequest(flood_request) => unreachable!(),
+                    _ => self.controller_send.send(DroneEvent::ControllerShortcut(packet)).unwrap(),
+                }
+                
                 return;
             }
 
