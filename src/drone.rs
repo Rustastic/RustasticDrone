@@ -403,6 +403,7 @@ impl RustasticDrone {
             if let PacketType::MsgFragment(frag) = packet.clone().pack_type {
                 self.send_nack(packet, Some(frag), NackType::UnexpectedRecipient(self.id));
             } else {
+                self.send_nack(packet.clone(), None, NackType::UnexpectedRecipient(self.id));
                 self.controller_send
                     .send(DroneEvent::ControllerShortcut(packet))
                     .unwrap();
