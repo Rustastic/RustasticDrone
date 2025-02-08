@@ -591,7 +591,7 @@ impl RustasticDrone {
             .hops
             .drain(packet.routing_header.hop_index..);
 
-        if let NackType::UnexpectedRecipient(id) = nack_type.clone() {
+        if let NackType::UnexpectedRecipient(id) = nack_type {
             packet.routing_header.hops.push(id);
         }
 
