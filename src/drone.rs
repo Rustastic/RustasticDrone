@@ -786,7 +786,7 @@ impl RustasticDrone {
 
             new_hops.reverse();
 
-            if new_hops.last().copied().unwrap() != flood_request.initiator_id {
+            if new_hops.last() != Some(&flood_request.initiator_id) {
                 new_hops.push(flood_request.initiator_id);
             }
 
