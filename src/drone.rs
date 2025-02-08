@@ -590,12 +590,11 @@ impl RustasticDrone {
             .routing_header
             .hops
             .drain(packet.routing_header.hop_index..);
-        
 
-        if let NackType::UnexpectedRecipient(id ) = nack_type.clone() {
+        if let NackType::UnexpectedRecipient(id) = nack_type.clone() {
             packet.routing_header.hops.push(id);
         }
-        
+
         packet.routing_header.hops.reverse();
 
         packet.routing_header.hop_index = 1;
@@ -786,6 +785,10 @@ impl RustasticDrone {
                 .collect();
 
             new_hops.reverse();
+
+            if new_hops.last().copied().unwrap() != flood_request.initiator_id {
+                new_hops.push(flood_request.initiator_id);
+            }
 
             let new_routing_header = SourceRoutingHeader {
                 hop_index: 1,
