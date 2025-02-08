@@ -390,7 +390,7 @@ impl RustasticDrone {
     ///     println!("Packet addressed to the wrong drone.");
     /// }
     /// ```
-    fn check_packet_correct_id(&self, mut packet: Packet) -> bool {
+    fn check_packet_correct_id(&self, packet: Packet) -> bool {
         if self.id == packet.routing_header.hops[packet.routing_header.hop_index] {
             true
         } else {
@@ -401,7 +401,6 @@ impl RustasticDrone {
             );
 
             if let PacketType::MsgFragment(frag) = packet.clone().pack_type {
-                
                 self.send_nack(packet, Some(frag), NackType::UnexpectedRecipient(self.id));
             } else {
                 self.controller_send
