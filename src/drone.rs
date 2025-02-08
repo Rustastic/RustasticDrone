@@ -400,11 +400,13 @@ impl RustasticDrone {
                 self.id
             );
 
-            packet.routing_header.hop_index += 1;
             if let PacketType::MsgFragment(frag) = packet.clone().pack_type {
+                
                 self.send_nack(packet, Some(frag), NackType::UnexpectedRecipient(self.id));
             } else {
-                self.send_nack(packet, None, NackType::UnexpectedRecipient(self.id));
+                self.controller_send
+                    .send(DroneEvent::ControllerShortcut(packet))
+                    .unwrap();
             }
 
             false
@@ -527,11 +529,11 @@ impl RustasticDrone {
                 packet.session_id,
                 self.id
             );
+            self.send_nack(packet.clone(), Some(fragment), NackType::Dropped);
             packet.routing_header.decrease_hop_index();
             self.controller_send
-                .send(DroneEvent::PacketDropped(packet.clone()))
+                .send(DroneEvent::PacketDropped(packet))
                 .unwrap();
-            self.send_nack(packet, Some(fragment), NackType::Dropped);
         } else {
             // Add the fragment to the buffer
             info!(
@@ -597,14 +599,13 @@ impl RustasticDrone {
 
         // Attempt to send the NACK to the previous hop
 
-        let mut nack = Nack {
-            fragment_index: 0, // Default fragment index for non-fragmented NACKs
+        let nack = Nack {
+            fragment_index: match fragment {
+                Some(frag) => frag.fragment_index,
+                None => 0,
+            }, // Default fragment index for non-fragmented NACKs
             nack_type,
         };
-
-        if let Some(frag) = fragment {
-            nack.fragment_index = frag.fragment_index;
-        }
 
         packet.pack_type = PacketType::Nack(nack);
 
@@ -894,13 +895,18 @@ impl RustasticDrone {
             .get(&new_routing_header.hops[new_routing_header.hop_index])
         {
             match sender.send(new_packet.clone()) {
-                Ok(()) => info!(
-                    "{} [ Drone {} ]: sent a FloodResponse with flood_id: {} to [ Drone {} ]",
-                    "✓".green(),
-                    self.id,
-                    flood_response.flood_id,
-                    &new_routing_header.hops[new_routing_header.hop_index]
-                ),
+                Ok(()) => {
+                    info!(
+                        "{} [ Drone {} ]: sent a FloodResponse with flood_id: {} to [ Drone {} ]",
+                        "✓".green(),
+                        self.id,
+                        flood_response.flood_id,
+                        &new_routing_header.hops[new_routing_header.hop_index]
+                    );
+                    self.controller_send
+                        .send(DroneEvent::PacketSent(packet.clone()))
+                        .unwrap();
+                }
                 Err(e) => {
                     error!(
                         "{} [ Drone {} ]: failed to send the FloodResponse to the Drone {}: {}",
@@ -1057,13 +1063,18 @@ impl RustasticDrone {
 
         if let Some(sender) = self.packet_send.get(&dest_node) {
             match sender.send(new_packet.clone()) {
-                Ok(()) => info!(
-                    "{} [ Drone {} ]: sent the FloodResponse to [ Drone {} ]\n└─>Reason: {}",
-                    "✓".green(),
-                    self.id,
-                    dest_node,
-                    reason
-                ),
+                Ok(()) => {
+                    info!(
+                        "{} [ Drone {} ]: sent the FloodResponse to [ Drone {} ]\n└─>Reason: {}",
+                        "✓".green(),
+                        self.id,
+                        dest_node,
+                        reason
+                    );
+                    self.controller_send
+                        .send(DroneEvent::PacketSent(new_packet))
+                        .unwrap();
+                }
                 Err(e) => {
                     error!(
                         "{} [ Drone {} ]: Failed to send the FloodResponse to [ Drone {} ]: {}",
